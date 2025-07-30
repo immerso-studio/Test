@@ -1,6 +1,16 @@
-'use client'
-import Scene from '../components/scene'
+'use client';
+import Scene from '../components/scene';
 
 export default function Home() {
-  return <Scene />
+  return (
+    <div style={{
+      width: '100vw',
+      height: '100vh',
+      overflow: 'hidden',
+      margin: 0,
+      padding: 0
+    }}>
+      <Scene />
+    </div>
+  );
 }
