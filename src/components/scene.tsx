@@ -2,8 +2,8 @@
 
 import React, { useRef, useState } from 'react'
 import * as THREE from 'three'
-import { Canvas, useLoader } from '@react-three/fiber'
-import { MeshTransmissionMaterial, Environment, Text } from '@react-three/drei'
+import { Canvas, useLoader, ThreeEvent } from '@react-three/fiber'
+import { MeshTransmissionMaterial, Environment } from '@react-three/drei'
 import { TextureLoader } from 'three'
 
 function BackgroundImage() {
@@ -19,14 +19,13 @@ function BackgroundImage() {
 
 function GlassSphere() {
   const meshRef = useRef<THREE.Mesh>(null!)
-  const [dragging, setDragging] = React.useState(false)
+  const [dragging, setDragging] = useState(false)
 
   const handlePointerDown = () => setDragging(true)
   const handlePointerUp = () => setDragging(false)
 
-  const handlePointerMove = (e: any) => {
+  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     if (dragging && meshRef.current) {
-      // Coordinate 3D sotto il mouse
       const point = e.point
       meshRef.current.position.x = point.x
       meshRef.current.position.y = point.y
@@ -51,10 +50,8 @@ function GlassSphere() {
         backside={true}
       />
     </mesh>
-
   )
 }
-
 
 export default function Scene() {
   return (
@@ -62,16 +59,8 @@ export default function Scene() {
       <ambientLight intensity={0.5} />
       <directionalLight position={[5, 5, 5]} />
       <Environment preset="night" />
-
-      {/* Immagine di sfondo */}
       <BackgroundImage />
-
-      {/* Sfera vetro */}
       <GlassSphere />
-
-
-
-
     </Canvas>
   )
 }
