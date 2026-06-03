@@ -136,7 +136,7 @@
       }
     });
 
-    // Sistema globale per gestire le schede informative (COMPATTO & ANIMATO)
+    // Sistema globale per gestire le schede informative
     AFRAME.registerSystem('info-card-system', {
       init: function () {
         this.activeCard = null;
@@ -145,22 +145,18 @@
       },
 
       createCard: function (data) {
-        // Rimuovi scheda esistente se presente
         this.hideCard();
 
         const camera = document.querySelector('#camera');
         if (!camera) return;
 
-        // Crea la scheda come child della camera
         const card = document.createElement('a-entity');
         card.setAttribute('id', 'info-card-follow');
-        // Posizionata centralmente, leggermente abbassata rispetto agli occhi
         card.setAttribute('position', '0 -0.15 -1');
         
-        // Animazione pop-up di apertura (effetto scala elastico)
+        // Animazione pop-up di apertura
         card.setAttribute('animation', 'property: scale; from: 0 0 0; to: 1 1 1; dur: 400; easing: easeOutElastic');
         
-        // Struttura della scheda compatta con intestazione nativa
         card.innerHTML = `
           <a-plane 
             position="0 0 0" 
@@ -183,8 +179,7 @@
             value="i" 
             align="center" 
             color="#4cc9f0" 
-            width="0.4"
-            font="mozillavr">
+            width="0.4">
           </a-text>
           
           <a-text 
@@ -192,8 +187,7 @@
             value="${data.title || 'Informazioni'}" 
             align="left" 
             color="#ffffff" 
-            width="0.7"
-            font="mozillavr">
+            width="0.7">
           </a-text>
           
           <a-text 
@@ -203,8 +197,7 @@
             baseline="top"
             color="#dcdcdc" 
             width="0.72"
-            wrap-count="42"
-            font="mozillavr">
+            wrap-count="42">
           </a-text>
           
           <a-entity id="close-container" position="0.34 0.16 0.002">
@@ -218,12 +211,11 @@
             
             <a-text 
               id="close-button-text"
-              position="0 0.002 0.001"
+              position="0 0 0.001"
               value="X" 
               align="center" 
               color="#ffffff" 
-              width="0.2"
-              font="mozillavr"
+              width="0.4"
               class="close-button close-interactive">
             </a-text>
           </a-entity>
@@ -234,13 +226,9 @@
         this.cardData = data;
         this.isCardOpen = true;
 
-        // Disabilita il teletrasporto durante l'interazione
         this.disableTeleport();
-        
-        // Isola i raycaster per cliccare solo sulla X di chiusura
         this.updateControllerRaycasters(true);
 
-        // Listener per gli effetti hover ed eventi di chiusura
         setTimeout(() => {
           this.setupCloseButtonListeners();
         }, 200);
@@ -255,27 +243,26 @@
           
           element.addEventListener('mouseenter', () => {
             if (closeBg) closeBg.setAttribute('color', '#ff6666');
-            if (closeBg) closeBg.setAttribute('scale', '1.15 1.15 1.15');
-            if (closeText) closeText.setAttribute('scale', '1.15 1.15 1.15');
           });
           
           element.addEventListener('mouseleave', () => {
             if (closeBg) closeBg.setAttribute('color', '#ff3333');
-            if (closeBg) closeBg.setAttribute('scale', '1 1 1');
-            if (closeText) closeText.setAttribute('scale', '1 1 1');
           });
           
           element.addEventListener('click', () => {
-            if(this.activeCard) {
-              // Animazione di chiusura (collasso) prima della rimozione dal DOM
-              this.activeCard.setAttribute('animation', 'property: scale; to: 0 0 0; dur: 200; easing: easeInBack');
-              setTimeout(() => this.hideCard(), 200);
-            }
+            this.animateAndHide();
           });
         };
         
         addHoverEffect(closeBg);
         addHoverEffect(closeText);
+      },
+
+      animateAndHide: function () {
+        if (this.activeCard) {
+          this.activeCard.setAttribute('animation', 'property: scale; to: 0 0 0; dur: 200; easing: easeInBack');
+          setTimeout(() => this.hideCard(), 200);
+        }
       },
 
       updateControllerRaycasters: function (cardOpen) {
@@ -352,17 +339,24 @@
       }
     });
 
-    // Componente per gestire gli input dei controller
+    // Componente per gestire gli input dei controller (TOGGLE APRE/CHIUDE)
     AFRAME.registerComponent('controller-input', {
       init: function () {
         this.system = document.querySelector('a-scene').systems['info-card-system'];
         
-        this.el.addEventListener('xbuttondown', () => { this.triggerInfoCard(); });
-        this.el.addEventListener('abuttondown', () => { this.triggerInfoCard(); });
-        this.el.addEventListener('click', () => { this.triggerInfoCard(); });
+        this.el.addEventListener('xbuttondown', () => { this.handleInput(); });
+        this.el.addEventListener('abuttondown', () => { this.handleInput(); });
+        this.el.addEventListener('click', () => { this.handleInput(); });
       },
 
-      triggerInfoCard: function () {
+      handleInput: function () {
+        // Se la scheda è già aperta, la pressione di qualsiasi tasto (X, A, Click) la chiude al volo
+        if (this.system.isCardVisible()) {
+          this.system.animateAndHide();
+          return;
+        }
+
+        // Se è chiusa, cerchiamo l'oggetto mirato per aprirla
         const intersectedObjects = document.querySelectorAll('.interattivo');
         let activeObject = null;
         
@@ -372,7 +366,7 @@
           }
         });
         
-        if (activeObject && !this.system.isCardVisible()) {
+        if (activeObject) {
           activeObject.components['info-card-trigger'].openCard();
         }
       }
@@ -475,9 +469,9 @@
 
   <div class="instructions">
     🖐️ Entrambe le mani: Trigger per Teletrasporto<br>
-    📄 Tasto X (sinistra) o A (destra) / Click Mouse: Apri scheda<br>
-    ✕ Clicca il cerchio rosso in alto a destra per chiudere la scheda fluttuante<br>
-    🔒 Durante la lettura: solo il tasto X di chiusura risponderà ai puntatori
+    📄 Tasto X (sinistra) o A (destra) / Click Mouse: APRI scheda<br>
+    ✕ Tasto X (sinistra) o A (destra) / Click ovunque: CHIUDI scheda fluttuante<br>
+    🔒 Durante la lettura il teletrasporto viene temporaneamente bloccato
   </div>
 
 </body>
