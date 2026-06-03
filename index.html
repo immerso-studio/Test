@@ -9,17 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/aframe-blink-controls@0.4.3/dist/aframe-blink-controls.min.js"></script>
 
   <script>
-    // COMPONENTE 1: Rimuove la linea bianca predefinita di A-Frame
-    AFRAME.registerComponent('nascondi-laser', {
-      init: function () {
-        this.el.addEventListener('controllerconnected', () => {
-          this.el.removeAttribute('line');
-          this.el.setAttribute('raycaster', 'showLine', false);
-        });
-      }
-    });
-
-    // COMPONENTE 2: Corregge la rotazione del modello .GLB delle mani
+    // Corregge la rotazione del modello .GLB delle mani
     AFRAME.registerComponent('fix-rotazione-mani', {
       schema: {
         rotazione: {type: 'vec3', default: {x: 90, y: 180, z: 0}}
@@ -31,95 +21,188 @@
       }
     });
 
-    // COMPONENTE 3: Gestisce l'outline bianco sul sub-mesh "Tasto_cliccabile"
-    AFRAME.registerComponent('outline-tasto', {
-      init: function () {
-        this.tastoMesh = null;
-        this.outlineMesh = null;
+    // Outline migliorato con depthTest disabilitato per visibilità su qualsiasi sfondo
+    AFRAME.registerComponent('outline', {
+      schema: {
+        color: {default: '#ffffff'},
+        scale: {default: 1.08},
+        pulse: {default: false},
+        frequency: {default: 1}
+      },
 
-        // 1. Cerca la mesh interna "Tasto_cliccabile" appena il GLB è caricato
-        this.el.addEventListener('model-loaded', () => {
-          const model = this.el.getObject3D('mesh');
-          model.traverse((child) => {
-            if (child.isMesh && child.name === 'Tasto_cliccabile') {
-              this.tastoMesh = child;
-            }
-          });
+      init: function () {
+        this.el.addEventListener('loaded', () => {
+          this.createOutline();
         });
 
-        // 2. Controlla continuamente dove sta puntando il raycaster sul macchinario
-        this.el.addEventListener('raycaster-intersection', (evt) => {
-          // Prendi il primo punto di contatto del raggio
-          const intersection = evt.detail.intersections[0];
-          
-          if (intersection && intersection.object.name === 'Tasto_cliccabile') {
-            this.mostraOutline();
-          } else {
-            // Se punta il macchinario ma NON il tasto, nascondi l'outline
-            this.nascondiOutline();
+        this.el.addEventListener('raycaster-intersected', () => {
+          if (this.outlineMesh) {
+            this.outlineMesh.visible = true;
+            if (this.outlineMeshThick) this.outlineMeshThick.visible = true;
           }
         });
-
-        // 3. Se il controller si sposta completamente fuori dal macchinario
-        this.el.addEventListener('raycaster-intersection-cleared', () => {
-          this.nascondiOutline();
+        
+        this.el.addEventListener('raycaster-intersected-cleared', () => {
+          if (this.outlineMesh) {
+            this.outlineMesh.visible = false;
+            if (this.outlineMeshThick) this.outlineMeshThick.visible = false;
+          }
         });
       },
 
-      mostraOutline: function () {
-        // Evita di duplicare l'outline se esiste già o se la mesh non è pronta
-        if (!this.tastoMesh || this.outlineMesh) return;
+      createOutline: function () {
+        const mesh = this.el.getObject3D('mesh');
+        if (!mesh) {
+          console.warn('outline: nessuna mesh trovata per', this.el);
+          return;
+        }
 
-        // Tecnica Solid-Glow (Inversione delle facce) con Three.js
-        const geometry = this.tastoMesh.geometry;
+        const geometry = mesh.geometry.clone();
+        
+        // Outline scuro di sfondo per contrasto
+        const materialDark = new THREE.MeshBasicMaterial({
+          color: '#000000',
+          side: THREE.BackSide,
+          depthTest: false,
+          depthWrite: false,
+          transparent: true,
+          opacity: 0.6,
+        });
+        
+        this.outlineMeshThick = new THREE.Mesh(geometry, materialDark);
+        this.outlineMeshThick.scale.setScalar(this.data.scale * 1.08);
+        this.outlineMeshThick.visible = false;
+        this.outlineMeshThick.renderOrder = 998;
+        
+        // Outline bianco principale
         const material = new THREE.MeshBasicMaterial({
-          color: 0xffffff,
-          side: THREE.BackSide // Renderizza solo l'esterno del guscio
+          color: this.data.color,
+          side: THREE.BackSide,
+          depthTest: false,
+          depthWrite: false,
+          transparent: true,
+          opacity: 0.9,
         });
 
         this.outlineMesh = new THREE.Mesh(geometry, material);
+        this.outlineMesh.scale.setScalar(this.data.scale);
+        this.outlineMesh.visible = false;
+        this.outlineMesh.renderOrder = 999;
         
-        // Copia posizione e rotazione locali dal tasto originale
-        this.outlineMesh.position.copy(this.tastoMesh.position);
-        this.outlineMesh.rotation.copy(this.tastoMesh.rotation);
-        
-        // Scala leggermente più grande (1.05 = +5%) per far sporgere l'outline bianco
-        this.outlineMesh.scale.copy(this.tastoMesh.scale).multiplyScalar(1.05);
-
-        // Aggiunge l'effetto direttamente dentro l'albero 3D del modello
-        this.tastoMesh.parent.add(this.outlineMesh);
+        this.el.object3D.add(this.outlineMeshThick);
+        this.el.object3D.add(this.outlineMesh);
       },
 
-      nascondiOutline: function () {
-        if (!this.outlineMesh) return;
+      tick: function (t) {
+        if (this.data.pulse && this.outlineMesh) {
+          const s = this.data.scale + 0.02 * Math.sin(this.data.frequency * t / 120);
+          this.outlineMesh.scale.setScalar(s);
+          if (this.outlineMeshThick) {
+            this.outlineMeshThick.scale.setScalar(s * 1.08);
+          }
+        }
+      }
+    });
 
-        // Rimuove l'oggetto e pulisce la memoria della GPU
-        this.tastoMesh.parent.remove(this.outlineMesh);
-        this.outlineMesh.geometry.dispose();
-        this.outlineMesh.material.dispose();
-        this.outlineMesh = null;
+    // Componente per sincronizzare teleport e laser
+    AFRAME.registerComponent('sync-teleport-laser', {
+      init: function () {
+        this.synced = false;
+        
+        // Aspetta che tutto sia pronto
+        this.el.addEventListener('loaded', () => {
+          this.setupSync();
+        });
+        
+        // Backup: tenta dopo un timeout
+        setTimeout(() => {
+          if (!this.synced) this.setupSync();
+        }, 1000);
+      },
+
+      setupSync: function () {
+        const blinkControls = this.el.components['blink-controls'];
+        const raycaster = this.el.components['raycaster'];
+        
+        if (!blinkControls || !raycaster) return;
+        
+        // Sincronizza i parametri visivi
+        blinkControls.data.curveTint = '#ffffff';
+        blinkControls.data.curveOpacity = 0.8;
+        
+        // Forza l'uso dello stesso raycaster
+        if (blinkControls.raycaster && raycaster.raycaster) {
+          // Sostituisci il raycaster di blink con quello del laser
+          Object.defineProperty(blinkControls, 'raycaster', {
+            get: function() { return raycaster.raycaster; },
+            configurable: true
+          });
+        }
+        
+        this.synced = true;
+      },
+
+      tick: function () {
+        const blinkControls = this.el.components['blink-controls'];
+        const raycaster = this.el.components['raycaster'];
+        
+        if (!blinkControls || !raycaster) return;
+        
+        // Sincronizza colori delle curve
+        if (blinkControls.curveMaterial) {
+          blinkControls.curveMaterial.color.set('#ffffff');
+          blinkControls.curveMaterial.opacity = 0.8;
+        }
+        
+        // Gestisci visibilità linea laser durante teleport
+        if (raycaster.line) {
+          if (blinkControls.isTeleporting) {
+            raycaster.line.visible = false;
+          } else if (raycaster.data.showLine) {
+            raycaster.line.visible = true;
+          }
+        }
       }
     });
   </script>
+
+  <style>
+    .instructions {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      pointer-events: none;
+      z-index: 1000;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
 
   <a-scene environment="preset: default; groundColor: #445; grid: cross" cursor="rayOrigin: mouse">
     
     <a-assets>
-      <a-asset-item id="industrial-machine" src="assets/macchinario.glb"></a-asset-item>
       <a-asset-item id="glb-mano" src="assets/mano_virtuale.glb"></a-asset-item>
     </a-assets>
 
     <a-entity id="rig" position="0 0 0">
       <a-camera id="camera" position="0 1.6 0"></a-camera>
 
+      <!-- Controller sinistro con teleport e laser sincronizzati -->
       <a-entity 
         id="leftHand"
         laser-controls="hand: left" 
-        nascondi-laser
-        raycaster="objects: .interattivo; far: 10; showLine: false"
-        blink-controls="cameraRig: #rig; teleportOrigin: #camera; collisionEntities: .navigabile; button: trigger; curveTint: #38bdf8; curveStyle: straight; rotateOnTeleport: false">
+        raycaster="objects: .interattivo; far: 10; showLine: true; lineColor: #ffffff; lineOpacity: 0.8"
+        line="color: #ffffff; opacity: 0.8"
+        blink-controls="cameraRig: #rig; teleportOrigin: #camera; collisionEntities: .navigabile; button: trigger; curveTint: #ffffff; curveOpacity: 0.8; curveStyle: straight; rotateOnTeleport: false"
+        sync-teleport-laser>
         
         <a-entity 
           gltf-model="#glb-mano" 
@@ -127,12 +210,12 @@
         </a-entity>
       </a-entity>
 
+      <!-- Controller destro solo interazione -->
       <a-entity 
         id="rightHand"
         laser-controls="hand: right" 
-        nascondi-laser
-        raycaster="objects: .interattivo; far: 10; showLine: false"
-        blink-controls="cameraRig: #rig; teleportOrigin: #camera; collisionEntities: .navigabile; button: trigger; curveTint: #38bdf8; curveStyle: straight; rotateOnTeleport: false">
+        raycaster="objects: .interattivo; far: 10; showLine: true; lineColor: #ffffff; lineOpacity: 0.8"
+        line="color: #ffffff; opacity: 0.8">
         
         <a-entity 
           gltf-model="#glb-mano" 
@@ -141,17 +224,39 @@
       </a-entity>
     </a-entity>
 
+    <!-- Piano navigabile trasparente -->
     <a-plane class="navigabile" rotation="-90 0 0" width="30" height="30" material="opacity: 0; transparent: true"></a-plane>
 
-    <a-entity 
-      gltf-model="#industrial-machine" 
-      outline-tasto
-      position="0 0 -3" 
-      rotation="0 -90 0" 
-      scale="0.07 0.07 0.07" 
-      class="interattivo">
-    </a-entity>
+
+    <!-- Tre solidi interattivi con outline migliorato -->
+    <a-box 
+      position="-2 1.2 -3" 
+      color="#4cc9f0" 
+      class="interattivo" 
+      outline="color: #ffffff; scale: 1.1; pulse: true; frequency: 2">
+    </a-box>
+
+    <a-sphere 
+      position="0 1.2 -3" 
+      radius="0.5" 
+      color="#f72585" 
+      class="interattivo" 
+      outline="color: #ffffff; scale: 1.12; pulse: true; frequency: 2">
+    </a-sphere>
+
+    <a-cone 
+      position="2 1.2 -3" 
+      color="#7209b7" 
+      class="interattivo" 
+      outline="color: #ffffff; scale: 1.1; pulse: true; frequency: 2">
+    </a-cone>
 
   </a-scene>
+
+  <div class="instructions">
+    🖐️ Mano Sinistra: Puntatore + Teletrasporto (Premi Trigger)<br>
+    🖐️ Mano Destra: Puntatore Interazione
+  </div>
+
 </body>
 </html>
