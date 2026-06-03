@@ -136,64 +136,115 @@
       }
     });
 
-    // Componente per la scheda informativa in VR
-    AFRAME.registerComponent('info-card', {
-      schema: {
-        title: {type: 'string', default: 'Informazioni'},
-        description: {type: 'string', default: 'Descrizione dell\'oggetto'},
-        image: {type: 'string', default: ''}
-      },
-
+    // Sistema globale per gestire le schede informative
+    AFRAME.registerSystem('info-card-system', {
       init: function () {
-        this.cardVisible = false;
-        this.cardEntity = null;
-        this.createCard();
-        
-        // Listener per i pulsanti A (destro) e X (sinistro)
-        this.el.addEventListener('abuttondown', () => {
-          if (this.el.id === 'rightHand') this.toggleCard();
-        });
-        
-        this.el.addEventListener('xbuttondown', () => {
-          if (this.el.id === 'leftHand') this.toggleCard();
-        });
-        
-        // Listener per il click del mouse in modalità desktop
-        this.el.addEventListener('click', () => {
-          this.toggleCard();
-        });
+        this.activeCard = null;
+        this.overlay = null;
+        this.cardData = null;
       },
 
-      createCard: function () {
-        // Crea la scheda come entità A-Frame
-        const card = document.createElement('a-entity');
-        card.setAttribute('id', 'info-card');
-        card.setAttribute('position', '0 1.6 -2');
-        card.setAttribute('visible', 'false');
+      createOverlay: function () {
+        const camera = document.querySelector('#camera');
+        if (!camera) return;
+
+        // Overlay scuro per sfocare/scurire lo sfondo
+        const overlay = document.createElement('a-entity');
+        overlay.setAttribute('id', 'card-overlay');
+        overlay.setAttribute('position', '0 0 -0.5');
         
-        // Sfondo della scheda
-        card.innerHTML = `
+        overlay.innerHTML = `
           <a-plane 
             position="0 0 0" 
-            width="0.8" 
-            height="0.6" 
-            color="#1a1a2e" 
-            material="shader: flat; opacity: 0.95; transparent: true">
+            width="4" 
+            height="3" 
+            color="#000000" 
+            material="shader: flat; opacity: 0.7; transparent: true; depthTest: false; depthWrite: false">
+          </a-plane>
+        `;
+        
+        camera.appendChild(overlay);
+        this.overlay = overlay;
+      },
+
+      createCard: function (data) {
+        // Rimuovi scheda esistente se presente
+        if (this.activeCard) {
+          this.activeCard.parentNode.removeChild(this.activeCard);
+        }
+        if (this.overlay) {
+          this.overlay.parentNode.removeChild(this.overlay);
+        }
+
+        const camera = document.querySelector('#camera');
+        if (!camera) return;
+
+        // Crea overlay scuro prima della scheda
+        this.createOverlay();
+
+        // Crea la scheda come child della camera per seguirla
+        const card = document.createElement('a-entity');
+        card.setAttribute('id', 'info-card-follow');
+        card.setAttribute('position', '0 0 -1.2');
+        
+        // Scheda con design migliorato e X ben visibile
+        card.innerHTML = `
+          <!-- Ombra della scheda -->
+          <a-plane 
+            position="0 -0.02 -0.005" 
+            width="0.9" 
+            height="0.7" 
+            color="#000000" 
+            material="shader: flat; opacity: 0.3; transparent: true; depthTest: false">
           </a-plane>
           
-          <!-- Bordo della scheda -->
+          <!-- Sfondo principale della scheda -->
           <a-plane 
-            position="0 0 0.001" 
-            width="0.82" 
-            height="0.62" 
-            color="#4cc9f0" 
-            material="shader: flat; side: back; opacity: 0.5">
+            position="0 0 0" 
+            width="0.85" 
+            height="0.65" 
+            color="#1a1a2e" 
+            material="shader: flat; opacity: 1.0; depthTest: false">
           </a-plane>
+          
+          <!-- Bordo glow della scheda -->
+          <a-plane 
+            position="0 0 0.002" 
+            width="0.87" 
+            height="0.67" 
+            color="#4cc9f0" 
+            material="shader: flat; side: back; opacity: 0.6; depthTest: false">
+          </a-plane>
+          
+          <!-- Bordo interno decorativo -->
+          <a-plane 
+            position="0 0 0.003" 
+            width="0.83" 
+            height="0.63" 
+            color="#16213e" 
+            material="shader: flat; side: double; opacity: 0.3; depthTest: false">
+          </a-plane>
+          
+          <!-- Icona informazioni -->
+          <a-circle 
+            position="0 0.27 0.004" 
+            radius="0.04" 
+            color="#4cc9f0"
+            material="depthTest: false">
+          </a-circle>
+          <a-text 
+            position="0 0.27 0.005" 
+            value="ℹ" 
+            align="center" 
+            color="#1a1a2e" 
+            width="0.06"
+            font="mozillavr">
+          </a-text>
           
           <!-- Titolo -->
           <a-text 
-            position="0 0.22 0.002" 
-            value="${this.data.title}" 
+            position="0 0.22 0.004" 
+            value="${data.title || 'Informazioni'}" 
             align="center" 
             color="#ffffff" 
             width="0.7"
@@ -202,99 +253,169 @@
           
           <!-- Linea separatrice -->
           <a-plane 
-            position="0 0.15 0.002" 
-            width="0.7" 
-            height="0.002" 
-            color="#4cc9f0">
+            position="0 0.14 0.004" 
+            width="0.65" 
+            height="0.003" 
+            color="#4cc9f0"
+            material="depthTest: false">
           </a-plane>
           
           <!-- Descrizione -->
           <a-text 
-            position="0 -0.05 0.002" 
-            value="${this.data.description}" 
+            position="0 -0.08 0.004" 
+            value="${data.description || 'Nessuna descrizione disponibile'}" 
             align="center" 
-            color="#cccccc" 
+            color="#e0e0e0" 
             width="0.7"
             font="mozillavr">
           </a-text>
           
-          <!-- Bottone X per chiudere -->
-          <a-plane 
-            class="close-button"
-            position="0.35 0.25 0.003" 
-            width="0.08" 
-            height="0.08" 
+          <!-- Bottone X per chiudere - Più grande e visibile -->
+          <a-circle 
+            id="close-button-bg"
+            position="0.38 0.28 0.005" 
+            radius="0.06" 
             color="#f72585"
-            material="shader: flat">
-          </a-plane>
+            material="shader: flat; depthTest: false"
+            class="close-button">
+          </a-circle>
           
+          <!-- Bordo del bottone X -->
+          <a-circle 
+            id="close-button-border"
+            position="0.38 0.28 0.004" 
+            radius="0.065" 
+            color="#ffffff" 
+            material="shader: flat; side: back; depthTest: false"
+            class="close-button">
+          </a-circle>
+          
+          <!-- Testo X -->
           <a-text 
-            class="close-button"
-            position="0.35 0.25 0.004" 
+            id="close-button-text"
+            position="0.38 0.28 0.006" 
             value="✕" 
             align="center" 
             color="#ffffff" 
-            width="0.05"
-            font="mozillavr">
+            width="0.08"
+            font="mozillavr"
+            class="close-button">
+          </a-text>
+          
+          <!-- Etichetta "Chiudi" sotto la X -->
+          <a-text 
+            position="0.38 0.18 0.004" 
+            value="Chiudi" 
+            align="center" 
+            color="#cccccc" 
+            width="0.15"
+            font="mozillavr"
+            scale="0.7 0.7 0.7">
           </a-text>
         `;
         
-        this.el.sceneEl.appendChild(card);
-        this.cardEntity = card;
-        
-        // Listener per chiudere la scheda
+        camera.appendChild(card);
+        this.activeCard = card;
+        this.cardData = data;
+
+        // Aggiungi listener per il bottone di chiusura
         setTimeout(() => {
-          const closeButtons = document.querySelectorAll('.close-button');
-          closeButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-              e.stopPropagation();
-              this.hideCard();
+          const closeElements = document.querySelectorAll('.close-button');
+          closeElements.forEach(element => {
+            element.addEventListener('click', () => this.hideCard());
+            // Aggiungi hover effect
+            element.addEventListener('mouseenter', () => {
+              const bg = document.querySelector('#close-button-bg');
+              if (bg) bg.setAttribute('color', '#ff6b9d');
+            });
+            element.addEventListener('mouseleave', () => {
+              const bg = document.querySelector('#close-button-bg');
+              if (bg) bg.setAttribute('color', '#f72585');
             });
           });
-        }, 500);
-      },
-
-      toggleCard: function () {
-        if (this.cardVisible) {
-          this.hideCard();
-        } else {
-          this.showCard();
-        }
-      },
-
-      showCard: function () {
-        if (this.cardEntity) {
-          // Posiziona la scheda davanti alla camera
-          const camera = document.querySelector('#camera');
-          if (camera) {
-            const cameraPos = camera.getAttribute('position');
-            const cameraRot = camera.getAttribute('rotation');
-            
-            // Calcola posizione davanti alla camera
-            const radY = THREE.MathUtils.degToRad(cameraRot.y);
-            const distance = 1.5;
-            const x = cameraPos.x - Math.sin(radY) * distance;
-            const z = cameraPos.z - Math.cos(radY) * distance;
-            
-            this.cardEntity.setAttribute('position', `${x} ${cameraPos.y} ${z}`);
-            this.cardEntity.setAttribute('rotation', `0 ${cameraRot.y} 0`);
-          }
-          
-          this.cardEntity.setAttribute('visible', 'true');
-          this.cardVisible = true;
-        }
+        }, 100);
       },
 
       hideCard: function () {
-        if (this.cardEntity) {
-          this.cardEntity.setAttribute('visible', 'false');
-          this.cardVisible = false;
+        if (this.activeCard) {
+          this.activeCard.parentNode.removeChild(this.activeCard);
+          this.activeCard = null;
+          this.cardData = null;
+        }
+        if (this.overlay) {
+          this.overlay.parentNode.removeChild(this.overlay);
+          this.overlay = null;
         }
       },
 
-      remove: function () {
-        if (this.cardEntity) {
-          this.cardEntity.parentNode.removeChild(this.cardEntity);
+      isCardVisible: function () {
+        return this.activeCard !== null;
+      }
+    });
+
+    // Componente per gestire l'apertura delle schede dagli oggetti
+    AFRAME.registerComponent('info-card-trigger', {
+      schema: {
+        title: {type: 'string', default: 'Informazioni'},
+        description: {type: 'string', default: 'Descrizione dettagliata dell\'oggetto selezionato.'}
+      },
+
+      init: function () {
+        this.system = document.querySelector('a-scene').systems['info-card-system'];
+        
+        this.el.addEventListener('raycaster-intersected', (e) => {
+          this.intersected = true;
+        });
+        
+        this.el.addEventListener('raycaster-intersected-cleared', (e) => {
+          this.intersected = false;
+        });
+      },
+
+      openCard: function () {
+        if (this.intersected && this.system) {
+          if (this.system.isCardVisible()) {
+            this.system.hideCard();
+          } else {
+            this.system.createCard({
+              title: this.data.title,
+              description: this.data.description
+            });
+          }
+        }
+      }
+    });
+
+    // Componente per gestire gli input dei controller
+    AFRAME.registerComponent('controller-input', {
+      init: function () {
+        this.system = document.querySelector('a-scene').systems['info-card-system'];
+        
+        this.el.addEventListener('xbuttondown', () => {
+          this.triggerInfoCard();
+        });
+        
+        this.el.addEventListener('abuttondown', () => {
+          this.triggerInfoCard();
+        });
+        
+        this.el.addEventListener('click', () => {
+          this.triggerInfoCard();
+        });
+      },
+
+      triggerInfoCard: function () {
+        const intersectedObjects = document.querySelectorAll('.interattivo');
+        let activeObject = null;
+        
+        intersectedObjects.forEach(obj => {
+          if (obj.components['info-card-trigger'] && obj.components['info-card-trigger'].intersected) {
+            activeObject = obj;
+          }
+        });
+        
+        if (activeObject) {
+          activeObject.components['info-card-trigger'].openCard();
         }
       }
     });
@@ -316,6 +437,7 @@
       z-index: 1000;
       text-align: center;
       line-height: 1.6;
+      backdrop-filter: blur(10px);
     }
   </style>
 </head>
@@ -330,7 +452,7 @@
     <a-entity id="rig" position="0 0 0">
       <a-camera id="camera" position="0 1.6 0"></a-camera>
 
-      <!-- Controller sinistro con teleport e laser sincronizzati -->
+      <!-- Controller sinistro -->
       <a-entity 
         id="leftHand"
         laser-controls="hand: left" 
@@ -338,7 +460,7 @@
         line="color: #ffffff; opacity: 0.8"
         blink-controls="cameraRig: #rig; teleportOrigin: #camera; collisionEntities: .navigabile; button: trigger; curveTint: #ffffff; curveOpacity: 0.8; curveStyle: straight; rotateOnTeleport: false"
         sync-teleport-laser
-        info-card="title: Corso Sicurezza; description: Questo è un box dimostrativo per il corso di formazione sulla sicurezza sul lavoro.">
+        controller-input>
         
         <a-entity 
           gltf-model="#glb-mano" 
@@ -346,14 +468,15 @@
         </a-entity>
       </a-entity>
 
-      <!-- Controller destro con teleport e laser sincronizzati -->
+      <!-- Controller destro -->
       <a-entity 
         id="rightHand"
         laser-controls="hand: right" 
         raycaster="objects: .interattivo; far: 10; showLine: true; lineColor: #ffffff; lineOpacity: 0.8"
         line="color: #ffffff; opacity: 0.8"
         blink-controls="cameraRig: #rig; teleportOrigin: #camera; collisionEntities: .navigabile; button: trigger; curveTint: #ffffff; curveOpacity: 0.8; curveStyle: straight; rotateOnTeleport: false"
-        sync-teleport-laser>
+        sync-teleport-laser
+        controller-input>
         
         <a-entity 
           gltf-model="#glb-mano" 
@@ -365,13 +488,14 @@
     <!-- Piano navigabile trasparente -->
     <a-plane class="navigabile" rotation="-90 0 0" width="30" height="30" material="opacity: 0; transparent: true"></a-plane>
 
-    <!-- Tre solidi interattivi con outline bianco -->
+    <!-- Oggetti interattivi con schede informative -->
     <a-box 
       id="box-sicurezza"
       position="-2 1.2 -3" 
       color="#4cc9f0" 
       class="interattivo" 
-      outline="color: #ffffff; scale: 1.08; pulse: false;">
+      outline="color: #ffffff; scale: 1.08; pulse: false;"
+      info-card-trigger="title: Box Sicurezza; description: Questo box rappresenta un modulo di sicurezza base. Contiene informazioni essenziali per la protezione sul lavoro e le normative vigenti.">
     </a-box>
 
     <a-sphere 
@@ -380,7 +504,8 @@
       radius="0.5" 
       color="#f72585" 
       class="interattivo" 
-      outline="color: #ffffff; scale: 1.08; pulse: false;">
+      outline="color: #ffffff; scale: 1.08; pulse: false;"
+      info-card-trigger="title: Sfera Interattiva; description: Elemento sferico per esercitazioni pratiche di formazione VR. Tocca per maggiori dettagli sulla sicurezza interattiva.">
     </a-sphere>
 
     <a-cone 
@@ -388,15 +513,17 @@
       position="2 1.2 -3" 
       color="#7209b7" 
       class="interattivo" 
-      outline="color: #ffffff; scale: 1.08; pulse: false;">
+      outline="color: #ffffff; scale: 1.08; pulse: false;"
+      info-card-trigger="title: Cono Segnaletico; description: Rappresenta un punto di interesse per la segnaletica di sicurezza. Importante per la prevenzione incidenti sul luogo di lavoro.">
     </a-cone>
 
   </a-scene>
 
   <div class="instructions">
     🖐️ Entrambe le mani: Trigger per Teletrasporto<br>
-    📄 Tasto X (sinistra) o A (destra): Apri scheda informativa<br>
-    ✕ Clicca X rossa per chiudere la scheda
+    📄 Tasto X (sinistra) o A (destra): Apri scheda<br>
+    ✕ Clicca il bottone rosa per chiudere<br>
+    🌑 Sfondo scurito durante la lettura
   </div>
 
 </body>
