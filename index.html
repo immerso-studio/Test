@@ -1,1 +1,136 @@
-<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Empty Project</title><meta itemprop="name" content="Empty Project"><meta name="twitter:title" content="Empty Project"><meta property="og:title" content="Empty Project"><meta property="og:site_name" content="Empty Project"><meta name="description" content="Start with a blank project."><meta itemprop="description" content="Start with a blank project."><meta property="og:description" content="Start with a blank project."><meta name="twitter:description" content="Start with a blank project."><script crossorigin="anonymous" src="./external/runtime/runtime.js"></script><script crossorigin="anonymous" src="./external/xr/xr.js" async="true" data-preload-chunks="face, slam"></script></head><body><script src="bundle.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Corso di Sicurezza VR - Area Metalmeccanica</title>
+  
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
+
+  <style>
+    /* CSS: Resettiamo i margini perché la scena VR occuperà l'intero schermo */
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #000;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    /* Interfaccia 2D per chi accede da PC prima di mettere il visore */
+    #ui-container {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 100;
+      background: rgba(15, 23, 42, 0.85);
+      color: #f8fafc;
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      max-width: 300px;
+      pointer-events: none; /* Evita che blocchi i click sulla scena */
+    }
+
+    #ui-container h1 {
+      font-size: 1.2rem;
+      margin: 0 0 10px 0;
+      color: #38bdf8;
+    }
+    
+    #ui-container p {
+      font-size: 0.9rem;
+      margin: 0;
+      line-height: 1.4;
+    }
+  </style>
+
+  <script>
+    // JavaScript: Componente personalizzato per le interazioni realistiche
+    AFRAME.registerComponent('macchinario-interattivo', {
+      init: function () {
+        let el = this.el;
+
+        // Quando il laser del controller (o il mouse) entra sul modello
+        el.addEventListener('mouseenter', function () {
+          // Feedback visivo: si ingrandisce leggermente per indicare l'interattività
+          el.setAttribute('scale', '1.02 1.02 1.02');
+        });
+
+        // Quando il laser/mano si allontana
+        el.addEventListener('mouseleave', function () {
+          el.setAttribute('scale', '1 1 1');
+        });
+
+        // Quando l'utente preme il grilletto del controller sul macchinario
+        el.addEventListener('mousedown', function () {
+          console.log("Ispezione macchina avviata!");
+          // Qui puoi inserire la logica per aprire menu, mostrare difetti o avviare audio
+          
+          // Esempio: Cambia l'opacità o emetti un suono
+          // el.setAttribute('material', 'opacity', 0.8);
+        });
+      }
+    });
+  </script>
+</head>
+<body>
+
+  <div id="ui-container">
+    <h1>Area Formazione Sicurezza</h1>
+    <p>Indossa il visore e premi l'icona "VR" in basso a destra per entrare nella simulazione. Usa i controller per ispezionare il macchinario.</p>
+  </div>
+
+  <a-scene environment="preset: default; groundColor: #445; grid: cross" cursor="rayOrigin: mouse">
+    
+    <a-assets>
+      <a-asset-item id="industrial-machine" src="assets/industrial_machine.glb"></a-asset-item>
+    </a-assets>
+
+    <a-entity id="rig" position="0 0 0">
+      <a-camera position="0 1.6 0"></a-camera>
+
+      <a-entity 
+        hand-controls="hand: left" 
+        laser-controls="hand: left" 
+        raycaster="objects: .interattivo; far: 5">
+      </a-entity>
+
+      <a-entity 
+        hand-controls="hand: right" 
+        laser-controls="hand: right" 
+        raycaster="objects: .interattivo; far: 5">
+      </a-entity>
+    </a-entity>
+
+    <a-entity 
+      gltf-model="#industrial-machine" 
+      position="0 0 -2.5" 
+      scale="1 1 1" 
+      class="interattivo" 
+      macchinario-interattivo>
+      
+      </a-entity>
+
+    <a-entity position="0 2 -1.5" rotation="20 0 0">
+      <a-plane width="2.2" height="1.2" color="#1e293b" opacity="0.95" border-radius="0.1"></a-plane>
+      <a-text 
+        value="PROCEDURE DI SICUREZZA\n\n1. Verifica l'assenza di tensione.\n2. Punta il controller sulla macchina.\n3. Premi il grilletto per ispezionare i componenti mobili."
+        color="#f8fafc" 
+        width="2" 
+        position="-1 0.1 0.01" 
+        align="left"
+        font="mozillavr">
+      </a-text>
+    </a-entity>
+
+    <a-light type="ambient" color="#fff" intensity="0.6"></a-light>
+    <a-light type="directional" color="#fff" intensity="0.8" position="-1 2 1"></a-light>
+
+  </a-scene>
+
+</body>
+</html>
