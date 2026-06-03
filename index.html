@@ -21,21 +21,22 @@
       }
     });
 
-    // Componente Outline PERFETTAMENTE ALLINEATO per i modelli 3D GLTF
+    // Componente Outline aggiornato per supportare una specifica submesh
     AFRAME.registerComponent('outline', {
       schema: {
         color: {default: '#ffffff'},
         scale: {default: 1.08},
         pulse: {default: false},
-        frequency: {default: 1}
+        frequency: {default: 1},
+        submesh: {type: 'string', default: ''} // Nome della mesh specifica (opzionale)
       },
 
       init: function () {
         this.outlines = [];
         this.outlineCreated = false;
         this.isGLTF = this.el.hasAttribute('gltf-model');
+        this.raycasterEl = null;
 
-        // Uniform dinamico per controllare lo spessore dell'estrusione nello shader
         this.outlineUniforms = {
           uThickness: { value: (this.data.scale - 1) * 0.25 }
         };
@@ -53,12 +54,17 @@
         
         setTimeout(setup, 0);
 
-        this.el.addEventListener('raycaster-intersected', () => {
-          this.outlines.forEach(mesh => { mesh.visible = true; });
+        this.el.addEventListener('raycaster-intersected', (evt) => {
+          if (!this.data.submesh) {
+            this.outlines.forEach(mesh => { mesh.visible = true; });
+          } else {
+            this.raycasterEl = evt.detail.el; // Traccia il controller che interseca
+          }
         });
         
         this.el.addEventListener('raycaster-intersected-cleared', () => {
           this.outlines.forEach(mesh => { mesh.visible = false; });
+          this.raycasterEl = null;
         });
       },
 
@@ -75,7 +81,6 @@
           opacity: 1.0,
         });
 
-        // Se è un modello GLTF, modifichiamo il Vertex Shader per estrudere i contorni lungo le normali
         if (this.isGLTF) {
           material.onBeforeCompile = (shader) => {
             shader.uniforms.uThickness = this.outlineUniforms.uThickness;
@@ -84,7 +89,6 @@
               '#include <begin_vertex>',
               `
               #include <begin_vertex>
-              // Estrude la geometria verso l'esterno prevenendo disallineamenti di pivot
               transformed += normal * uThickness;
               `
             );
@@ -94,11 +98,27 @@
         const meshesToOutline = [];
         
         if (rootObj.isMesh) {
-          meshesToOutline.push(rootObj);
+          if (!this.data.submesh || rootObj.name === this.data.submesh || rootObj.name === 'Mesh.023') {
+            meshesToOutline.push(rootObj);
+          }
         } else {
           rootObj.traverse((node) => {
             if (node.isMesh && (!node.userData || !node.userData.isOutline)) {
-              meshesToOutline.push(node);
+              if (!this.data.submesh) {
+                meshesToOutline.push(node);
+              } else {
+                // Genera l'outline solo se il nodo corrente o il suo parent corrispondono al target
+                let current = node;
+                let match = false;
+                while (current && current !== rootObj) {
+                  if (current.name === this.data.submesh || current.name === 'Mesh.023') {
+                    match = true;
+                    break;
+                  }
+                  current = current.parent;
+                }
+                if (match) meshesToOutline.push(node);
+              }
             }
           });
         }
@@ -110,10 +130,8 @@
           const outlineSubMesh = new THREE.Mesh(geometry, material);
           
           if (this.isGLTF) {
-            // Mantiene la scala identica a quella originale del nodo (nessun drift spaziale)
             outlineSubMesh.scale.set(1, 1, 1);
           } else {
-            // Le primitive mantengono lo scaling standard geometrico
             outlineSubMesh.scale.setScalar(this.data.scale);
           }
           
@@ -127,14 +145,32 @@
       },
 
       tick: function (t) {
+        // Gestione visibilità dinamica basata sul puntamento di precisione della submesh
+        if (this.data.submesh && this.raycasterEl) {
+          const raycaster = this.raycasterEl.components.raycaster;
+          const intersection = raycaster.getIntersection(this.el);
+          if (intersection && intersection.object) {
+            let hit = false;
+            let obj = intersection.object;
+            while (obj) {
+              if (obj.name === this.data.submesh || obj.name === 'Mesh.023') {
+                hit = true;
+                break;
+              }
+              obj = obj.parent;
+            }
+            this.outlines.forEach(mesh => { mesh.visible = hit; });
+          } else {
+            this.outlines.forEach(mesh => { mesh.visible = false; });
+          }
+        }
+
         if (!this.data.pulse || this.outlines.length === 0) return;
 
         if (this.isGLTF) {
-          // Fa pulsare lo spessore direttamente via GPU sullo Shader
           const baseThickness = (this.data.scale - 1) * 0.25;
           this.outlineUniforms.uThickness.value = baseThickness + 0.004 * Math.sin(this.data.frequency * t / 120);
         } else {
-          // Fa pulsare la scala per i blocchi primitivi tradizionali
           const s = this.data.scale + 0.02 * Math.sin(this.data.frequency * t / 120);
           this.outlines.forEach(mesh => {
             mesh.scale.setScalar(s);
@@ -260,16 +296,49 @@
       isCardVisible: function () { return this.isCardOpen; }
     });
 
-    // Componente per gestire l'apertura delle schede dagli oggetti
+    // Componente Info-Card aggiornato per gestire il clic filtrato sulla submesh
     AFRAME.registerComponent('info-card-trigger', {
       schema: {
         title: {type: 'string', default: 'Informazioni'},
-        description: {type: 'string', default: 'Descrizione dettagliata dell\'oggetto selezionato.'}
+        description: {type: 'string', default: 'Descrizione dettagliata dell\'oggetto selezionato.'},
+        submesh: {type: 'string', default: ''} // Nome della mesh specifica (opzionale)
       },
       init: function () {
         this.system = document.querySelector('a-scene').systems['info-card-system'];
-        this.el.addEventListener('raycaster-intersected', () => { this.intersected = true; });
-        this.el.addEventListener('raycaster-intersected-cleared', () => { this.intersected = false; });
+        this.raycasterEl = null;
+
+        this.el.addEventListener('raycaster-intersected', (evt) => { 
+          if (!this.data.submesh) {
+            this.intersected = true; 
+          } else {
+            this.raycasterEl = evt.detail.el;
+          }
+        });
+        
+        this.el.addEventListener('raycaster-intersected-cleared', () => { 
+          this.intersected = false; 
+          this.raycasterEl = null;
+        });
+      },
+      tick: function () {
+        if (this.data.submesh && this.raycasterEl) {
+          const raycaster = this.raycasterEl.components.raycaster;
+          const intersection = raycaster.getIntersection(this.el);
+          if (intersection && intersection.object) {
+            let hit = false;
+            let obj = intersection.object;
+            while (obj) {
+              if (obj.name === this.data.submesh || obj.name === 'Mesh.023') {
+                hit = true;
+                break;
+              }
+              obj = obj.parent;
+            }
+            this.intersected = hit;
+          } else {
+            this.intersected = false;
+          }
+        }
       },
       openCard: function () {
         if (this.intersected && this.system && !this.system.isCardVisible()) {
@@ -353,8 +422,8 @@
       rotation="0 -90 0"
       scale="0.07 0.07 0.07"
       class="interattivo" 
-      outline="color: #ffffff; scale: 1.08; pulse: false;"
-      info-card-trigger="title: Macchinario Industriale; description: Elemento tridimensionale del macchinario per esercitazioni pratiche di formazione VR. Tocca per maggiori dettagli sulla sicurezza e la gestione dei rischi sul cantiere.">
+      outline="color: #ffffff; scale: 1.08; pulse: false; submesh: Tasto_cliccabile;"
+      info-card-trigger="title: Pulsante Macchinario; description: Hai attivato con successo il tasto cliccabile del macchinario industriale. Questa procedura simula la messa in sicurezza dell'impianto in ambiente VR.; submesh: Tasto_cliccabile;">
     </a-entity>
 
     <a-cone id="cone-sicurezza" position="2 1.2 -3" color="#7209b7" class="interattivo" outline="color: #ffffff; scale: 1.08; pulse: false;" info-card-trigger="title: Cono Segnaletico; description: Rappresenta un punto di interesse per la segnaletica di sicurezza. Importante per la prevenzione di incidenti e la corretta delimitazione delle zone di pericolo."></a-cone>
