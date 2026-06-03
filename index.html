@@ -13,7 +13,6 @@
     AFRAME.registerComponent('nascondi-laser', {
       init: function () {
         this.el.addEventListener('controllerconnected', () => {
-          // Rimuove l'attributo linea che laser-controls genera in automatico
           this.el.removeAttribute('line');
           this.el.setAttribute('raycaster', 'showLine', false);
         });
@@ -31,6 +30,76 @@
         });
       }
     });
+
+    // COMPONENTE 3: Gestisce l'outline bianco sul sub-mesh "Tasto_cliccabile"
+    AFRAME.registerComponent('outline-tasto', {
+      init: function () {
+        this.tastoMesh = null;
+        this.outlineMesh = null;
+
+        // 1. Cerca la mesh interna "Tasto_cliccabile" appena il GLB è caricato
+        this.el.addEventListener('model-loaded', () => {
+          const model = this.el.getObject3D('mesh');
+          model.traverse((child) => {
+            if (child.isMesh && child.name === 'Tasto_cliccabile') {
+              this.tastoMesh = child;
+            }
+          });
+        });
+
+        // 2. Controlla continuamente dove sta puntando il raycaster sul macchinario
+        this.el.addEventListener('raycaster-intersection', (evt) => {
+          // Prendi il primo punto di contatto del raggio
+          const intersection = evt.detail.intersections[0];
+          
+          if (intersection && intersection.object.name === 'Tasto_cliccabile') {
+            this.mostraOutline();
+          } else {
+            // Se punta il macchinario ma NON il tasto, nascondi l'outline
+            this.nascondiOutline();
+          }
+        });
+
+        // 3. Se il controller si sposta completamente fuori dal macchinario
+        this.el.addEventListener('raycaster-intersection-cleared', () => {
+          this.nascondiOutline();
+        });
+      },
+
+      mostraOutline: function () {
+        // Evita di duplicare l'outline se esiste già o se la mesh non è pronta
+        if (!this.tastoMesh || this.outlineMesh) return;
+
+        // Tecnica Solid-Glow (Inversione delle facce) con Three.js
+        const geometry = this.tastoMesh.geometry;
+        const material = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          side: THREE.BackSide // Renderizza solo l'esterno del guscio
+        });
+
+        this.outlineMesh = new THREE.Mesh(geometry, material);
+        
+        // Copia posizione e rotazione locali dal tasto originale
+        this.outlineMesh.position.copy(this.tastoMesh.position);
+        this.outlineMesh.rotation.copy(this.tastoMesh.rotation);
+        
+        // Scala leggermente più grande (1.05 = +5%) per far sporgere l'outline bianco
+        this.outlineMesh.scale.copy(this.tastoMesh.scale).multiplyScalar(1.05);
+
+        // Aggiunge l'effetto direttamente dentro l'albero 3D del modello
+        this.tastoMesh.parent.add(this.outlineMesh);
+      },
+
+      nascondiOutline: function () {
+        if (!this.outlineMesh) return;
+
+        // Rimuove l'oggetto e pulisce la memoria della GPU
+        this.tastoMesh.parent.remove(this.outlineMesh);
+        this.outlineMesh.geometry.dispose();
+        this.outlineMesh.material.dispose();
+        this.outlineMesh = null;
+      }
+    });
   </script>
 </head>
 <body>
@@ -46,6 +115,7 @@
       <a-camera id="camera" position="0 1.6 0"></a-camera>
 
       <a-entity 
+        id="leftHand"
         laser-controls="hand: left" 
         nascondi-laser
         raycaster="objects: .interattivo; far: 10; showLine: false"
@@ -58,6 +128,7 @@
       </a-entity>
 
       <a-entity 
+        id="rightHand"
         laser-controls="hand: right" 
         nascondi-laser
         raycaster="objects: .interattivo; far: 10; showLine: false"
@@ -74,6 +145,7 @@
 
     <a-entity 
       gltf-model="#industrial-machine" 
+      outline-tasto
       position="0 0 -3" 
       rotation="0 -90 0" 
       scale="0.07 0.07 0.07" 
