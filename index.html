@@ -9,13 +9,23 @@
   <script src="https://cdn.jsdelivr.net/npm/aframe-blink-controls@0.4.3/dist/aframe-blink-controls.min.js"></script>
 
   <script>
-    // COMPONENTE PER CORREGGERE LA ROTAZIONE DEL MODELLO .GLB DELLE MANI
+    // COMPONENTE 1: Rimuove la linea bianca predefinita di A-Frame
+    AFRAME.registerComponent('nascondi-laser', {
+      init: function () {
+        this.el.addEventListener('controllerconnected', () => {
+          // Rimuove l'attributo linea che laser-controls genera in automatico
+          this.el.removeAttribute('line');
+          this.el.setAttribute('raycaster', 'showLine', false);
+        });
+      }
+    });
+
+    // COMPONENTE 2: Corregge la rotazione del modello .GLB delle mani
     AFRAME.registerComponent('fix-rotazione-mani', {
       schema: {
-        rotazione: {type: 'vec3', default: {x: 90, y: 180, z: 0}} // Valori di correzione standard
+        rotazione: {type: 'vec3', default: {x: 90, y: 180, z: 0}}
       },
       init: function () {
-        // Applica la rotazione correttiva non appena il modello è caricato
         this.el.addEventListener('model-loaded', () => {
           this.el.setAttribute('rotation', this.data.rotazione);
         });
@@ -37,8 +47,9 @@
 
       <a-entity 
         laser-controls="hand: left" 
-        raycaster="objects: .interattivo; far: 10"
-        blink-controls="cameraRig: #rig; teleportOrigin: #camera; collisionEntities: .navigabile; button: trigger; curveTint: #38bdf8">
+        nascondi-laser
+        raycaster="objects: .interattivo; far: 10; showLine: false"
+        blink-controls="cameraRig: #rig; teleportOrigin: #camera; collisionEntities: .navigabile; button: trigger; curveTint: #38bdf8; curveStyle: straight; rotateOnTeleport: false">
         
         <a-entity 
           gltf-model="#glb-mano" 
@@ -48,8 +59,9 @@
 
       <a-entity 
         laser-controls="hand: right" 
-        raycaster="objects: .interattivo; far: 10"
-        blink-controls="cameraRig: #rig; teleportOrigin: #camera; collisionEntities: .navigabile; button: trigger; curveTint: #38bdf8">
+        nascondi-laser
+        raycaster="objects: .interattivo; far: 10; showLine: false"
+        blink-controls="cameraRig: #rig; teleportOrigin: #camera; collisionEntities: .navigabile; button: trigger; curveTint: #38bdf8; curveStyle: straight; rotateOnTeleport: false">
         
         <a-entity 
           gltf-model="#glb-mano" 
