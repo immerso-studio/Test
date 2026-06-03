@@ -136,220 +136,190 @@
       }
     });
 
-    // Sistema globale per gestire le schede informative
+    // Sistema globale per gestire le schede informative (COMPATTO & ANIMATO)
     AFRAME.registerSystem('info-card-system', {
       init: function () {
         this.activeCard = null;
-        this.overlay = null;
         this.cardData = null;
-      },
-
-      createOverlay: function () {
-        const camera = document.querySelector('#camera');
-        if (!camera) return;
-
-        // Overlay scuro per sfocare/scurire lo sfondo
-        const overlay = document.createElement('a-entity');
-        overlay.setAttribute('id', 'card-overlay');
-        overlay.setAttribute('position', '0 0 -0.5');
-        
-        overlay.innerHTML = `
-          <a-plane 
-            position="0 0 0" 
-            width="4" 
-            height="3" 
-            color="#000000" 
-            material="shader: flat; opacity: 0.7; transparent: true; depthTest: false; depthWrite: false">
-          </a-plane>
-        `;
-        
-        camera.appendChild(overlay);
-        this.overlay = overlay;
+        this.isCardOpen = false;
       },
 
       createCard: function (data) {
         // Rimuovi scheda esistente se presente
-        if (this.activeCard) {
-          this.activeCard.parentNode.removeChild(this.activeCard);
-        }
-        if (this.overlay) {
-          this.overlay.parentNode.removeChild(this.overlay);
-        }
+        this.hideCard();
 
         const camera = document.querySelector('#camera');
         if (!camera) return;
 
-        // Crea overlay scuro prima della scheda
-        this.createOverlay();
-
-        // Crea la scheda come child della camera per seguirla
+        // Crea la scheda come child della camera
         const card = document.createElement('a-entity');
         card.setAttribute('id', 'info-card-follow');
-        card.setAttribute('position', '0 0 -1.2');
+        // Posizionata centralmente, leggermente abbassata rispetto agli occhi
+        card.setAttribute('position', '0 -0.15 -1');
         
-        // Scheda con design migliorato e X ben visibile
+        // Animazione pop-up di apertura (effetto scala elastico)
+        card.setAttribute('animation', 'property: scale; from: 0 0 0; to: 1 1 1; dur: 400; easing: easeOutElastic');
+        
+        // Struttura della scheda compatta con intestazione nativa
         card.innerHTML = `
-          <!-- Ombra della scheda -->
-          <a-plane 
-            position="0 -0.02 -0.005" 
-            width="0.9" 
-            height="0.7" 
-            color="#000000" 
-            material="shader: flat; opacity: 0.3; transparent: true; depthTest: false">
-          </a-plane>
-          
-          <!-- Sfondo principale della scheda -->
           <a-plane 
             position="0 0 0" 
-            width="0.85" 
-            height="0.65" 
-            color="#1a1a2e" 
-            material="shader: flat; opacity: 1.0; depthTest: false">
+            width="0.8" 
+            height="0.45" 
+            color="#22222b" 
+            material="shader: flat; opacity: 0.95; transparent: true; depthTest: false">
           </a-plane>
           
-          <!-- Bordo glow della scheda -->
           <a-plane 
-            position="0 0 0.002" 
-            width="0.87" 
-            height="0.67" 
+            position="0 0.205 0.001" 
+            width="0.8" 
+            height="0.04" 
             color="#4cc9f0" 
-            material="shader: flat; side: back; opacity: 0.6; depthTest: false">
+            material="shader: flat; depthTest: false">
           </a-plane>
-          
-          <!-- Bordo interno decorativo -->
-          <a-plane 
-            position="0 0 0.003" 
-            width="0.83" 
-            height="0.63" 
-            color="#16213e" 
-            material="shader: flat; side: double; opacity: 0.3; depthTest: false">
-          </a-plane>
-          
-          <!-- Icona informazioni -->
-          <a-circle 
-            position="0 0.27 0.004" 
-            radius="0.04" 
-            color="#4cc9f0"
-            material="depthTest: false">
-          </a-circle>
+
           <a-text 
-            position="0 0.27 0.005" 
-            value="ℹ" 
+            position="-0.36 0.16 0.002" 
+            value="i" 
             align="center" 
-            color="#1a1a2e" 
-            width="0.06"
+            color="#4cc9f0" 
+            width="0.4"
             font="mozillavr">
           </a-text>
           
-          <!-- Titolo -->
           <a-text 
-            position="0 0.22 0.004" 
+            position="-0.32 0.16 0.002" 
             value="${data.title || 'Informazioni'}" 
-            align="center" 
+            align="left" 
             color="#ffffff" 
             width="0.7"
             font="mozillavr">
           </a-text>
           
-          <!-- Linea separatrice -->
-          <a-plane 
-            position="0 0.14 0.004" 
-            width="0.65" 
-            height="0.003" 
-            color="#4cc9f0"
-            material="depthTest: false">
-          </a-plane>
-          
-          <!-- Descrizione -->
           <a-text 
-            position="0 -0.08 0.004" 
+            position="-0.36 0.05 0.002" 
             value="${data.description || 'Nessuna descrizione disponibile'}" 
-            align="center" 
-            color="#e0e0e0" 
-            width="0.7"
+            align="left" 
+            baseline="top"
+            color="#dcdcdc" 
+            width="0.72"
+            wrap-count="42"
             font="mozillavr">
           </a-text>
           
-          <!-- Bottone X per chiudere - Più grande e visibile -->
-          <a-circle 
-            id="close-button-bg"
-            position="0.38 0.28 0.005" 
-            radius="0.06" 
-            color="#f72585"
-            material="shader: flat; depthTest: false"
-            class="close-button">
-          </a-circle>
-          
-          <!-- Bordo del bottone X -->
-          <a-circle 
-            id="close-button-border"
-            position="0.38 0.28 0.004" 
-            radius="0.065" 
-            color="#ffffff" 
-            material="shader: flat; side: back; depthTest: false"
-            class="close-button">
-          </a-circle>
-          
-          <!-- Testo X -->
-          <a-text 
-            id="close-button-text"
-            position="0.38 0.28 0.006" 
-            value="✕" 
-            align="center" 
-            color="#ffffff" 
-            width="0.08"
-            font="mozillavr"
-            class="close-button">
-          </a-text>
-          
-          <!-- Etichetta "Chiudi" sotto la X -->
-          <a-text 
-            position="0.38 0.18 0.004" 
-            value="Chiudi" 
-            align="center" 
-            color="#cccccc" 
-            width="0.15"
-            font="mozillavr"
-            scale="0.7 0.7 0.7">
-          </a-text>
+          <a-entity id="close-container" position="0.34 0.16 0.002">
+            <a-circle 
+              id="close-button-bg"
+              radius="0.035" 
+              color="#ff3333"
+              material="shader: flat; depthTest: false"
+              class="close-button close-interactive">
+            </a-circle>
+            
+            <a-text 
+              id="close-button-text"
+              position="0 0.002 0.001"
+              value="X" 
+              align="center" 
+              color="#ffffff" 
+              width="0.2"
+              font="mozillavr"
+              class="close-button close-interactive">
+            </a-text>
+          </a-entity>
         `;
         
         camera.appendChild(card);
         this.activeCard = card;
         this.cardData = data;
+        this.isCardOpen = true;
 
-        // Aggiungi listener per il bottone di chiusura
+        // Disabilita il teletrasporto durante l'interazione
+        this.disableTeleport();
+        
+        // Isola i raycaster per cliccare solo sulla X di chiusura
+        this.updateControllerRaycasters(true);
+
+        // Listener per gli effetti hover ed eventi di chiusura
         setTimeout(() => {
-          const closeElements = document.querySelectorAll('.close-button');
-          closeElements.forEach(element => {
-            element.addEventListener('click', () => this.hideCard());
-            // Aggiungi hover effect
-            element.addEventListener('mouseenter', () => {
-              const bg = document.querySelector('#close-button-bg');
-              if (bg) bg.setAttribute('color', '#ff6b9d');
-            });
-            element.addEventListener('mouseleave', () => {
-              const bg = document.querySelector('#close-button-bg');
-              if (bg) bg.setAttribute('color', '#f72585');
-            });
+          this.setupCloseButtonListeners();
+        }, 200);
+      },
+
+      setupCloseButtonListeners: function () {
+        const closeBg = document.querySelector('#close-button-bg');
+        const closeText = document.querySelector('#close-button-text');
+        
+        const addHoverEffect = (element) => {
+          if (!element) return;
+          
+          element.addEventListener('mouseenter', () => {
+            if (closeBg) closeBg.setAttribute('color', '#ff6666');
+            if (closeBg) closeBg.setAttribute('scale', '1.15 1.15 1.15');
+            if (closeText) closeText.setAttribute('scale', '1.15 1.15 1.15');
           });
-        }, 100);
+          
+          element.addEventListener('mouseleave', () => {
+            if (closeBg) closeBg.setAttribute('color', '#ff3333');
+            if (closeBg) closeBg.setAttribute('scale', '1 1 1');
+            if (closeText) closeText.setAttribute('scale', '1 1 1');
+          });
+          
+          element.addEventListener('click', () => {
+            if(this.activeCard) {
+              // Animazione di chiusura (collasso) prima della rimozione dal DOM
+              this.activeCard.setAttribute('animation', 'property: scale; to: 0 0 0; dur: 200; easing: easeInBack');
+              setTimeout(() => this.hideCard(), 200);
+            }
+          });
+        };
+        
+        addHoverEffect(closeBg);
+        addHoverEffect(closeText);
+      },
+
+      updateControllerRaycasters: function (cardOpen) {
+        const leftHand = document.querySelector('#leftHand');
+        const rightHand = document.querySelector('#rightHand');
+        
+        if (leftHand && leftHand.components['raycaster']) {
+          leftHand.setAttribute('raycaster', 'objects', cardOpen ? '.close-interactive' : '.interattivo');
+        }
+        if (rightHand && rightHand.components['raycaster']) {
+          rightHand.setAttribute('raycaster', 'objects', cardOpen ? '.close-interactive' : '.interattivo');
+        }
+      },
+
+      disableTeleport: function () {
+        const leftHand = document.querySelector('#leftHand');
+        const rightHand = document.querySelector('#rightHand');
+        
+        if (leftHand && leftHand.components['blink-controls']) leftHand.setAttribute('blink-controls', 'enabled', false);
+        if (rightHand && rightHand.components['blink-controls']) rightHand.setAttribute('blink-controls', 'enabled', false);
+      },
+
+      enableTeleport: function () {
+        const leftHand = document.querySelector('#leftHand');
+        const rightHand = document.querySelector('#rightHand');
+        
+        if (leftHand && leftHand.components['blink-controls']) leftHand.setAttribute('blink-controls', 'enabled', true);
+        if (rightHand && rightHand.components['blink-controls']) rightHand.setAttribute('blink-controls', 'enabled', true);
       },
 
       hideCard: function () {
-        if (this.activeCard) {
+        if (this.activeCard && this.activeCard.parentNode) {
           this.activeCard.parentNode.removeChild(this.activeCard);
-          this.activeCard = null;
-          this.cardData = null;
         }
-        if (this.overlay) {
-          this.overlay.parentNode.removeChild(this.overlay);
-          this.overlay = null;
-        }
+        this.activeCard = null;
+        this.cardData = null;
+        this.isCardOpen = false;
+        
+        this.enableTeleport();
+        this.updateControllerRaycasters(false);
       },
 
       isCardVisible: function () {
-        return this.activeCard !== null;
+        return this.isCardOpen;
       }
     });
 
@@ -373,15 +343,11 @@
       },
 
       openCard: function () {
-        if (this.intersected && this.system) {
-          if (this.system.isCardVisible()) {
-            this.system.hideCard();
-          } else {
-            this.system.createCard({
-              title: this.data.title,
-              description: this.data.description
-            });
-          }
+        if (this.intersected && this.system && !this.system.isCardVisible()) {
+          this.system.createCard({
+            title: this.data.title,
+            description: this.data.description
+          });
         }
       }
     });
@@ -391,17 +357,9 @@
       init: function () {
         this.system = document.querySelector('a-scene').systems['info-card-system'];
         
-        this.el.addEventListener('xbuttondown', () => {
-          this.triggerInfoCard();
-        });
-        
-        this.el.addEventListener('abuttondown', () => {
-          this.triggerInfoCard();
-        });
-        
-        this.el.addEventListener('click', () => {
-          this.triggerInfoCard();
-        });
+        this.el.addEventListener('xbuttondown', () => { this.triggerInfoCard(); });
+        this.el.addEventListener('abuttondown', () => { this.triggerInfoCard(); });
+        this.el.addEventListener('click', () => { this.triggerInfoCard(); });
       },
 
       triggerInfoCard: function () {
@@ -414,7 +372,7 @@
           }
         });
         
-        if (activeObject) {
+        if (activeObject && !this.system.isCardVisible()) {
           activeObject.components['info-card-trigger'].openCard();
         }
       }
@@ -452,7 +410,6 @@
     <a-entity id="rig" position="0 0 0">
       <a-camera id="camera" position="0 1.6 0"></a-camera>
 
-      <!-- Controller sinistro -->
       <a-entity 
         id="leftHand"
         laser-controls="hand: left" 
@@ -468,7 +425,6 @@
         </a-entity>
       </a-entity>
 
-      <!-- Controller destro -->
       <a-entity 
         id="rightHand"
         laser-controls="hand: right" 
@@ -485,17 +441,15 @@
       </a-entity>
     </a-entity>
 
-    <!-- Piano navigabile trasparente -->
     <a-plane class="navigabile" rotation="-90 0 0" width="30" height="30" material="opacity: 0; transparent: true"></a-plane>
 
-    <!-- Oggetti interattivi con schede informative -->
     <a-box 
       id="box-sicurezza"
       position="-2 1.2 -3" 
       color="#4cc9f0" 
       class="interattivo" 
       outline="color: #ffffff; scale: 1.08; pulse: false;"
-      info-card-trigger="title: Box Sicurezza; description: Questo box rappresenta un modulo di sicurezza base. Contiene informazioni essenziali per la protezione sul lavoro e le normative vigenti.">
+      info-card-trigger="title: Box Sicurezza; description: Questo box rappresenta un modulo di sicurezza base. Contiene informazioni essenziali per la protezione sul lavoro e le normative vigenti ambientali.">
     </a-box>
 
     <a-sphere 
@@ -505,7 +459,7 @@
       color="#f72585" 
       class="interattivo" 
       outline="color: #ffffff; scale: 1.08; pulse: false;"
-      info-card-trigger="title: Sfera Interattiva; description: Elemento sferico per esercitazioni pratiche di formazione VR. Tocca per maggiori dettagli sulla sicurezza interattiva.">
+      info-card-trigger="title: Sfera Interattiva; description: Elemento sferico per esercitazioni pratiche di formazione VR. Tocca per maggiori dettagli sulla sicurezza e la gestione dei rischi sul cantiere.">
     </a-sphere>
 
     <a-cone 
@@ -514,16 +468,16 @@
       color="#7209b7" 
       class="interattivo" 
       outline="color: #ffffff; scale: 1.08; pulse: false;"
-      info-card-trigger="title: Cono Segnaletico; description: Rappresenta un punto di interesse per la segnaletica di sicurezza. Importante per la prevenzione incidenti sul luogo di lavoro.">
+      info-card-trigger="title: Cono Segnaletico; description: Rappresenta un punto di interesse per la segnaletica di sicurezza. Importante per la prevenzione di incidenti e la corretta delimitazione delle zone di pericolo.">
     </a-cone>
 
   </a-scene>
 
   <div class="instructions">
     🖐️ Entrambe le mani: Trigger per Teletrasporto<br>
-    📄 Tasto X (sinistra) o A (destra): Apri scheda<br>
-    ✕ Clicca il bottone rosa per chiudere<br>
-    🌑 Sfondo scurito durante la lettura
+    📄 Tasto X (sinistra) o A (destra) / Click Mouse: Apri scheda<br>
+    ✕ Clicca il cerchio rosso in alto a destra per chiudere la scheda fluttuante<br>
+    🔒 Durante la lettura: solo il tasto X di chiusura risponderà ai puntatori
   </div>
 
 </body>
