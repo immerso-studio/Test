@@ -222,7 +222,7 @@
         locationPointerGroup2.add(stageMarker2); locationPointerGroup2.add(stageTriangle2);
 
         // TAPPA 3: Allarme Emergenza Macchinario
-        const targetStage3 = new THREE.Vector3(1, 0.01, -2.8); // Vicino al macchinario
+        const targetStage3 = new THREE.Vector3(3, 0.01, -5); // Vicino al macchinario
         let stage3Triggered = false;
         let emergenzaRisolta = false;
         const locationPointerGroup3 = new THREE.Group();
@@ -321,7 +321,7 @@
         const warningGroup = new THREE.Group();
         warningGroup.add(warningPanelMesh);
         scene.add(warningGroup); 
-        warningGroup.position.set(1, 1.8, -3.8); // Più vicino all'area di emergenza
+        warningGroup.position.set(3, 1.8, -5.8); // Più vicino all'area di emergenza
         warningGroup.rotation.y = -Math.PI / 10;
         warningGroup.visible = false; 
 

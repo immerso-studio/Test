@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tool di Posizionamento - Schede e Pointer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        /* Stile del pannello UI editor */
+        #ui-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 320px;
+            max-height: 95vh;
+            overflow-y: auto;
+            background: rgba(15, 15, 15, 0.9);
+            border: 1px solid #333;
+            color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 1000;
+        }
+        .control-group {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #444;
+        }
+        .control-group h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #00d2ff;
+        }
+        .slider-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .slider-row label {
+            width: 30px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .slider-row input[type="range"] {
+            flex-grow: 1;
+            margin: 0 10px;
+        }
+        .slider-row span {
+            width: 45px;
+            text-align: right;
+            font-family: monospace;
+            font-size: 14px;
+        }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="ui-panel">
+        <h2 style="margin-top:0; font-size:18px; text-align:center;">Editor Coordinate</h2>
+        <p style="font-size: 12px; color:#aaa; margin-bottom: 20px;">Usa il mouse per muovere la visuale (Click sx = Ruota, Rotellina = Zoom, Click dx = Sposta). Trascina gli slider per posizionare gli elementi.</p>
+        <div id="controls-container"></div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // -----------------------------------------------------------------
+        // CONFIGURAZIONE AMBIENTE BASE
+        // -----------------------------------------------------------------
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+        scene.fog = new THREE.FogExp2(0x1a1a1a, 0.06);
+
+        // Per la visualizzazione desktop allontaniamo un po' la camera
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 1.6, 2); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Controlli Desktop per muoversi agevolmente
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 1, -2);
+        controls.update();
+
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 1.2));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(3, 10, 3);
+        scene.add(dirLight);
+
+        // Pavimento e Griglia
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(40, 40),
+            new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        const grid = new THREE.GridHelper(40, 40, 0x333333, 0x222222);
+        grid.position.y = 0.001;
+        scene.add(grid);
+
+        // Banco da lavoro
+        const table = new THREE.Mesh(
+            new THREE.BoxGeometry(2.2, 0.8, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0x2b2b2b })
+        );
+        table.position.set(0, 0.4, -1.5);
+        scene.add(table);
+
+        const gltfLoader = new GLTFLoader();
+        gltfLoader.load('assets/macchinario.glb', (gltf) => {
+            const machineModel = gltf.scene;
+            machineModel.position.set(-1, 0, -3.5); 
+            scene.add(machineModel);
+        }, undefined, () => { console.warn("Macchinario non trovato. Uso scena vuota per debug."); });
+
+        // Caricamento dei DPI per contesto
+        const ppeDati = [
+            { id: "caschetto", url: 'assets/safety/caschetto.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5) },
+            { id: "occhiali", url: 'assets/safety/occhiali.glb', pos: new THREE.Vector3(0, 0.8, -1.5) },
+            { id: "guanti", url: 'assets/safety/guanti.glb', pos: new THREE.Vector3(0.6, 0.8, -1.5) }
+        ];
+        ppeDati.forEach(data => {
+            gltfLoader.load(data.url, gltf => {
+                gltf.scene.position.copy(data.pos); scene.add(gltf.scene);
+            }, undefined, () => {});
+        });
+
+
+        // -----------------------------------------------------------------
+        // CREAZIONE POINTER E SCHEDE (TUTTI FORZATI VISIBILI)
+        // -----------------------------------------------------------------
+        const stageMarkerMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+        const coneGeo = new THREE.ConeGeometry(0.08, 0.2, 4).rotateX(Math.PI); 
+
+        // TAPPA 1
+        const locationPointerGroup1 = new THREE.Group();
+        locationPointerGroup1.position.set(0, 0.01, -0.6); 
+        const stageMarker1 = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.35, 32).rotateX(-Math.PI / 2), stageMarkerMat);
+        const stageTriangle1 = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0x00d2ff }));
+        stageTriangle1.position.y = 0.5; 
+        locationPointerGroup1.add(stageMarker1); locationPointerGroup1.add(stageTriangle1);
+        scene.add(locationPointerGroup1);
+
+        const objPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ color: 0x222222 })); // Colori placeholder
+        const objectiveGroup = new THREE.Group();
+        objectiveGroup.add(objPanelMesh);
+        objectiveGroup.position.set(0, 1.45, -1.96); 
+        scene.add(objectiveGroup); 
+
+        // TAPPA 2
+        const locationPointerGroup2 = new THREE.Group();
+        locationPointerGroup2.position.set(3, 0.01, -2.4); 
+        const stageMarker2 = stageMarker1.clone(); const stageTriangle2 = stageTriangle1.clone();
+        locationPointerGroup2.add(stageMarker2); locationPointerGroup2.add(stageTriangle2);
+        scene.add(locationPointerGroup2);
+
+        const machObjPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ color: 0x442200 }));
+        const machObjectiveGroup = new THREE.Group();
+        machObjectiveGroup.add(machObjPanelMesh);
+        machObjectiveGroup.position.set(3, 1.8, -3.2); 
+        machObjectiveGroup.rotation.y = -Math.PI / 6; 
+        scene.add(machObjectiveGroup); 
+
+        // TAPPA 3
+        const locationPointerGroup3 = new THREE.Group();
+        locationPointerGroup3.position.set(1, 0.01, -2.8);
+        const stageMarker3 = stageMarker1.clone(); const stageTriangle3 = stageTriangle1.clone();
+        locationPointerGroup3.add(stageMarker3); locationPointerGroup3.add(stageTriangle3);
+        scene.add(locationPointerGroup3);
+
+        const warningPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ color: 0x440000 }));
+        const warningGroup = new THREE.Group();
+        warningGroup.add(warningPanelMesh);
+        warningGroup.position.set(1, 1.8, -3.8); 
+        warningGroup.rotation.y = -Math.PI / 10;
+        scene.add(warningGroup); 
+
+
+        // -----------------------------------------------------------------
+        // SISTEMA DI UI PER MODIFICARE LE COORDINATE
+        // -----------------------------------------------------------------
+        const container = document.getElementById('controls-container');
+
+        function createControls(name, obj, isPanel) {
+            const groupDiv = document.createElement('div');
+            groupDiv.className = 'control-group';
+
+            const title = document.createElement('h3');
+            title.innerText = name;
+            groupDiv.appendChild(title);
+
+            // X, Y, Z
+            ['x', 'y', 'z'].forEach(axis => {
+                const row = document.createElement('div');
+                row.className = 'slider-row';
+
+                // Usiamo range da -10 a 10 per facilità, con step piccoli
+                let min = -10, max = 10;
+                if (axis === 'y') { min = 0; max = 5; } // Per la Y limito a quote logiche
+
+                row.innerHTML = `
+                    <label>${axis.toUpperCase()}</label>
+                    <input type="range" min="${min}" max="${max}" step="0.01" value="${obj.position[axis]}">
+                    <span>${obj.position[axis].toFixed(2)}</span>
+                `;
+                
+                const slider = row.querySelector('input');
+                const valDisplay = row.querySelector('span');
+
+                slider.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    obj.position[axis] = val;
+                    valDisplay.innerText = val.toFixed(2);
+                });
+
+                groupDiv.appendChild(row);
+            });
+
+            // Rotazione Y (solo per le schede)
+            if (isPanel) {
+                const row = document.createElement('div');
+                row.className = 'slider-row';
+                row.innerHTML = `
+                    <label>Rot</label>
+                    <input type="range" min="-3.14" max="3.14" step="0.01" value="${obj.rotation.y}">
+                    <span>${obj.rotation.y.toFixed(2)}</span>
+                `;
+                const slider = row.querySelector('input');
+                const valDisplay = row.querySelector('span');
+                slider.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    obj.rotation.y = val;
+                    valDisplay.innerText = val.toFixed(2);
+                });
+                groupDiv.appendChild(row);
+            }
+
+            container.appendChild(groupDiv);
+        }
+
+        // Genero la UI per tutti gli elementi
+        createControls("Tappa 1 - Pointer", locationPointerGroup1, false);
+        createControls("Tappa 1 - Scheda", objectiveGroup, true);
+        createControls("Tappa 2 - Pointer", locationPointerGroup2, false);
+        createControls("Tappa 2 - Scheda", machObjectiveGroup, true);
+        createControls("Tappa 3 - Pointer (Emergenza)", locationPointerGroup3, false);
+        createControls("Tappa 3 - Scheda Warning", warningGroup, true);
+
+
+        // -----------------------------------------------------------------
+        // LOOP DI RENDER SEMPLIFICATO
+        // -----------------------------------------------------------------
+        renderer.setAnimationLoop(() => {
+            const time = performance.now() * 0.003;
+            
+            // Animazione basica dei pointer giusto per vederli
+            stageTriangle1.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
+            stageTriangle2.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
+            stageTriangle3.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
+
+            controls.update(); // Necessario per OrbitControls
+            renderer.render(scene, camera);
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
