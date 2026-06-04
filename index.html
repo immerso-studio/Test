@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Training VR Industriale - Macchinario e Collisioni</title>
+    <title>Training VR Industriale - Nuovi DPI e Macchinario</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     </style>
@@ -54,7 +54,7 @@
             new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 })
         );
         floor.rotation.x = -Math.PI / 2;
-        floor.name = 'floor'; // NOME FONDAMENTALE PER IL TELETRASPORTO
+        floor.name = 'floor'; 
         scene.add(floor);
 
         const grid = new THREE.GridHelper(40, 40, 0x333333, 0x222222);
@@ -71,23 +71,39 @@
         scene.add(table);
 
         const interactables = [];
-        
-        // Array degli ostacoli per fermare il raggio laser di movimento
         const environmentColliders = [floor, table]; 
 
         // -----------------------------------------------------------------
-        // CARICAMENTO MACCHINARIO (TAPPA 2) E OSTACOLO FISICO
+        // CARICAMENTO MACCHINARIO E OSTACOLO FISICO
         // -----------------------------------------------------------------
         const gltfLoader = new GLTFLoader();
         
+        // Dati dei componenti del macchinario da cercare
+        const componentiMacchinario = {
+            "Cabina_di_controllo_metallo": { id: "cabina", title: "Cabina di Controllo", info: "Pannello principale per la gestione della macchina. Verificare che non vi siano spie d'allarme attive." },
+            "Tasto_rosso": { id: "tasto_emergenza", title: "Pulsante di Emergenza", info: "Blocca istantaneamente l'alimentazione in caso di pericolo. Assicurati che sia ben visibile e non ostruito." }
+        };
+
         gltfLoader.load('assets/macchinario.glb', (gltf) => {
             const machineModel = gltf.scene;
-            machineModel.position.set(0, 0, -3.5); // Dietro il tavolo
+            // Allineato alla posizione della tappa 2
+            machineModel.position.set(3, 0, -3.5); 
             machineModel.name = 'macchinario';
             scene.add(machineModel);
-            
-            // Aggiungiamo il macchinario alla lista degli oggetti che bloccano il laser
             environmentColliders.push(machineModel);
+
+            // Cerca le mesh specifiche
+            machineModel.traverse((child) => {
+                if (child.isMesh && componentiMacchinario[child.name]) {
+                    const datiComponente = componentiMacchinario[child.name];
+                    child.userData.isInteractable = true; 
+                    child.userData.id = datiComponente.id; 
+                    child.userData.title = datiComponente.title; 
+                    child.userData.info = datiComponente.info;
+                    child.userData.isFaseMacchinario = true; // Tag per distinguerlo dai DPI
+                    interactables.push(child);
+                }
+            });
         }, undefined, (error) => { console.warn("Modello macchinario non trovato, procedo senza:", error); });
 
 
@@ -164,9 +180,8 @@
             };
         });
 
-
         // -----------------------------------------------------------------
-        // CONFIGURAZIONE LOCATION POINTERS (Tappa 1 e Tappa 2)
+        // CONFIGURAZIONE LOCATION POINTERS 
         // -----------------------------------------------------------------
         const stageMarkerMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
         const coneGeo = new THREE.ConeGeometry(0.08, 0.2, 4).rotateX(Math.PI); 
@@ -185,26 +200,30 @@
         locationPointerGroup1.add(stageMarker1); locationPointerGroup1.add(stageTriangle1);
 
         // TAPPA 2: Macchinario
-        const targetStage2 = new THREE.Vector3(0, 0.01, -2.4); 
+        const targetStage2 = new THREE.Vector3(3, 0.01, -2.4); 
         let stage2Triggered = false;
         const locationPointerGroup2 = new THREE.Group();
         locationPointerGroup2.position.copy(targetStage2);
-        locationPointerGroup2.visible = false; // Apparirà solo completati i DPI
+        locationPointerGroup2.visible = false; 
         scene.add(locationPointerGroup2);
 
         const stageMarker2 = stageMarker1.clone();
         const stageTriangle2 = stageTriangle1.clone();
         locationPointerGroup2.add(stageMarker2); locationPointerGroup2.add(stageTriangle2);
 
-
-        // Variabili Logica DPI
+        // Variabili Logica DPI (Fase 1)
         const inspectedObjects = new Set(); 
         const totalObjectsToInspect = 3;
         let taskCompleted = false;
 
+        // Variabili Logica Macchinario (Fase 2)
+        const macchinarioInspectedObjects = new Set();
+        const totalMacchinarioObjects = 2;
+        let macchinarioTaskCompleted = false;
+
 
         // -----------------------------------------------------------------
-        // CREAZIONE SCHEDA OBIETTIVO (Fissa sul Banco)
+        // CREAZIONE SCHEDA OBIETTIVO 1 (Fissa sul Banco)
         // -----------------------------------------------------------------
         const objCanvas = document.createElement('canvas'); objCanvas.width = 512; objCanvas.height = 320;
         const objCtx = objCanvas.getContext('2d');
@@ -236,16 +255,51 @@
             objTexture.needsUpdate = true;
         }
 
+        // -----------------------------------------------------------------
+        // CREAZIONE SCHEDA OBIETTIVO 2 (Fissa sul Macchinario)
+        // -----------------------------------------------------------------
+        const machObjCanvas = document.createElement('canvas'); machObjCanvas.width = 512; machObjCanvas.height = 320;
+        const machObjCtx = machObjCanvas.getContext('2d');
+        const machObjTexture = new THREE.CanvasTexture(machObjCanvas);
+
+        const machObjPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ map: machObjTexture, side: THREE.DoubleSide, transparent: true }));
+        const machObjectiveGroup = new THREE.Group();
+        machObjectiveGroup.add(machObjPanelMesh);
+        scene.add(machObjectiveGroup); 
+        // Posizioniamo la scheda obiettivo 2 sopra o vicino al macchinario
+        machObjectiveGroup.position.set(3, 1.8, -3.2); 
+        machObjectiveGroup.rotation.y = -Math.PI / 6; // Ruotata leggermente verso il centro
+        machObjectiveGroup.visible = false; 
+
+        function disegnaSchedaObiettivoMacchinario3D() {
+            machObjCtx.clearRect(0, 0, 512, 320);
+            machObjCtx.fillStyle = 'rgba(15, 15, 15, 0.95)'; machObjCtx.fillRect(0, 0, 512, 320);
+            
+            if (macchinarioTaskCompleted) {
+                machObjCtx.strokeStyle = '#00ff66'; machObjCtx.lineWidth = 6; machObjCtx.strokeRect(0, 0, 512, 320);
+                machObjCtx.fillStyle = '#00ff66'; machObjCtx.font = 'bold 24px sans-serif'; machObjCtx.textAlign = 'left'; machObjCtx.fillText("✔ ADDESTRAMENTO CONCLUSO", 40, 60);
+                machObjCtx.fillStyle = '#ffffff'; machObjCtx.font = '18px sans-serif'; machObjCtx.fillText("Hai completato l'ispezione della macchina.", 40, 130);
+            } else {
+                machObjCtx.strokeStyle = 'rgba(255, 165, 0, 0.5)'; machObjCtx.lineWidth = 6; machObjCtx.strokeRect(0, 0, 512, 320);
+                machObjCtx.fillStyle = '#ffa500'; machObjCtx.font = 'bold 22px sans-serif'; machObjCtx.textAlign = 'left'; machObjCtx.fillText("OBIETTIVO: VERIFICA MACCHINARIO", 40, 60);
+                machObjCtx.fillStyle = '#cccccc'; machObjCtx.font = '16px sans-serif';
+                wrapTextCentrato(machObjCtx, "Identifica e visualizza le specifiche della Cabina di Controllo e del Tasto Rosso di Emergenza sul macchinario.", 40, 110, 432, 26);
+                machObjCtx.fillStyle = '#ffffff'; machObjCtx.font = 'bold 18px sans-serif'; machObjCtx.fillText(`Componenti Trovati: ${macchinarioInspectedObjects.size} / ${totalMacchinarioObjects}`, 40, 260);
+            }
+            machObjTexture.needsUpdate = true;
+        }
+        disegnaSchedaObiettivoMacchinario3D(); // Inizializzazione canvas
+
 
         // -----------------------------------------------------------------
-        // CONFIGURAZIONE SCHEDA INFORMATIVA DPI
+        // CONFIGURAZIONE SCHEDA INFORMATIVA E NUOVI DPI
         // -----------------------------------------------------------------
         let isInfoPanelOpen = false; let currentHoverObject = null; let currentAttachedObject = null; 
 
         const ppeDati = [
-            { id: "casco", url: 'assets/safety/casco.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5), title: "Casco di Sicurezza", info: "Protegge il capo da urti accidentali e dalla caduta dall'alto di materiali. Ispeziona regolarmente per crepe." },
-            { id: "imbragatura", url: 'assets/safety/imbragatura.glb', pos: new THREE.Vector3(0, 0.92, -1.5), title: "Imbragatura Anticaduta", info: "Dispositivo salvavita obbligatorio per lavori operativi oltre i 2 metri d'altezza. Controlla i punti di aggancio." },
-            { id: "scarpe", url: 'assets/safety/scarpe.glb', pos: new THREE.Vector3(0.6, 0.85, -1.5), title: "Scarpe Tecniche", info: "Puntale rinforzato in acciaio contro schiacciamenti accidentali e suola antiscivolo. Obbligatorie in cantiere." }
+            { id: "caschetto", url: 'assets/safety/caschetto.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5), title: "Caschetto di Sicurezza", info: "Protegge il capo da urti accidentali e caduta di materiali. Controlla sempre l'integrità della calotta prima dell'uso." },
+            { id: "occhiali", url: 'assets/safety/occhiali.glb', pos: new THREE.Vector3(0, 0.8, -1.5), title: "Occhiali Protettivi", info: "Ripara gli occhi da schegge, polvere e schizzi di liquidi pericolosi. Verifica che le lenti siano intatte e pulite." },
+            { id: "guanti", url: 'assets/safety/guanti.glb', pos: new THREE.Vector3(0.6, 0.8, -1.5), title: "Guanti da Lavoro", info: "Garantiscono una presa sicura e proteggono le mani da tagli o abrasioni. Assicurati che non presentino strappi o usura." }
         ];
 
         const infoCanvas = document.createElement('canvas'); infoCanvas.width = 400; infoCanvas.height = 300;
@@ -279,14 +333,15 @@
                     if (child.isMesh) {
                         child.userData.isInteractable = true; child.userData.id = data.id; 
                         child.userData.title = data.title; child.userData.info = data.info;
+                        child.userData.isFaseMacchinario = false; // Tag Fase 1
                         interactables.push(child); 
                     }
                 });
                 scene.add(model);
-            }, null, (error) => { console.error("DPI Mancante:", error); });
+            }, null, (error) => { console.error(`Errore caricamento ${data.id}:`, error); });
         });
 
-        // Teletrasporto standard
+        // Setup Teletrasporto, Controller & Laser
         const teleportHeight = 0.6; const teleportRadius = 0.25; 
         const teleportGeo = new THREE.CylinderGeometry(teleportRadius, teleportRadius, teleportHeight, 32, 1, true).translate(0, teleportHeight / 2, 0); 
         const teleportMat = new THREE.ShaderMaterial({
@@ -297,7 +352,6 @@
         });
         const teleportMarker = new THREE.Mesh(teleportGeo, teleportMat); teleportMarker.visible = false; scene.add(teleportMarker);
 
-        // Setup Controller & Laser
         const controller1 = renderer.xr.getController(0); const controller2 = renderer.xr.getController(1);
         cameraRig.add(controller1); cameraRig.add(controller2);
 
@@ -329,7 +383,7 @@
 
 
         // -----------------------------------------------------------------
-        // LOOP ANIMAZIONE PRINCIPALE & LOGICA DEI FRAME
+        // LOOP ANIMAZIONE PRINCIPALE
         // -----------------------------------------------------------------
         const raycaster = new THREE.Raycaster();
         const workingMatrix = new THREE.Matrix4();
@@ -345,7 +399,7 @@
                 currentHoverObject = null;
             }
 
-            // --- ANIMAZIONE E LOGICA PUNTEGGI (TAPPA 1) ---
+            // TAPPA 1 LOGIC
             if (!isTutorialActive && !stage1Triggered) {
                 stageMarkerMat.opacity = 0.3 + Math.sin(time * 2) * 0.4;
                 stageTriangle1.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
@@ -361,7 +415,7 @@
                 }
             }
 
-            // --- ANIMAZIONE E LOGICA PUNTEGGI (TAPPA 2) ---
+            // TAPPA 2 LOGIC
             if (taskCompleted && !stage2Triggered) {
                 locationPointerGroup2.visible = true;
                 stageMarkerMat.opacity = 0.3 + Math.sin(time * 2) * 0.4;
@@ -373,7 +427,10 @@
                 if (userPos2D.distanceTo(targetPos2D2) < 0.5) {
                     stage2Triggered = true;
                     locationPointerGroup2.visible = false;
-                    objectiveGroup.visible = false; // Nascondo la vecchia scheda arrivati alla nuova postazione
+                    objectiveGroup.visible = false; 
+                    
+                    // Mostriamo la scheda della Tappa 2
+                    machObjectiveGroup.visible = true;
                 }
             }
 
@@ -406,11 +463,10 @@
                         if (objIntersects.length > 0) {
                             currentHoverObject = objIntersects[0].object; currentRayLength = objIntersects[0].distance; 
                             if (!isTeleportMode && currentHoverObject.material && currentHoverObject.material.emissive) {
-                                currentHoverObject.material.emissive.setHex(0x222222);
+                                currentHoverObject.material.emissive.setHex(0x333333); // Aumentato leggermente per i pezzi di macchinario
                             }
                         }
 
-                        // AGGIORNAMENTO: Teletrasporto bloccato da tavolo e macchinario
                         const teleportIntersects = raycaster.intersectObjects(environmentColliders, true);
                         if (teleportIntersects.length > 0) {
                             const hitObj = teleportIntersects[0].object; 
@@ -418,18 +474,16 @@
                             
                             if (isTeleportMode && controller === activeTeleportController) {
                                 if (hitObj.name === 'floor') {
-                                    // Valido: Crea il marker di teletrasporto
                                     currentRayLength = hitDist; 
                                     teleportPoint.copy(teleportIntersects[0].point);
                                     teleportMarker.position.copy(teleportPoint).y = 0.001; 
                                     teleportMarker.visible = true;
                                 } else {
-                                    // Ostacolo (Tavolo / Macchinario): Ferma il laser ma disattiva il marker
                                     currentRayLength = hitDist; 
                                     teleportMarker.visible = false; 
                                 }
                             } else if (!objIntersects.length) { 
-                                currentRayLength = hitDist; // Riposo: Il laser tocca l'ostacolo
+                                currentRayLength = hitDist; 
                             }
                         } else if (isTeleportMode && controller === activeTeleportController) { 
                             teleportMarker.visible = false; 
@@ -465,13 +519,25 @@
                                     } else {
                                         disegnaSchedaMinimalSolida(data.title, data.info); infoGroup.visible = true; isInfoPanelOpen = true; currentAttachedObject = currentHoverObject;
                                         
-                                        if (stage1Triggered && !taskCompleted) {
+                                        // Logica completamento Tappa 1 (DPI)
+                                        if (stage1Triggered && !taskCompleted && !data.isFaseMacchinario) {
                                             inspectedObjects.add(data.id);
                                             if (inspectedObjects.size === totalObjectsToInspect) {
                                                 taskCompleted = true;
-                                                disegnaSchedaObiettivo3D(); // Aggiorna UI a 'Completato' (che a sua volta attiva il trigger Stage 2)
+                                                disegnaSchedaObiettivo3D(); 
                                             } else {
-                                                disegnaSchedaObiettivo3D(); // Aggiorna solo il contatore
+                                                disegnaSchedaObiettivo3D(); 
+                                            }
+                                        }
+
+                                        // Logica completamento Tappa 2 (Macchinario)
+                                        if (stage2Triggered && !macchinarioTaskCompleted && data.isFaseMacchinario) {
+                                            macchinarioInspectedObjects.add(data.id);
+                                            if (macchinarioInspectedObjects.size === totalMacchinarioObjects) {
+                                                macchinarioTaskCompleted = true;
+                                                disegnaSchedaObiettivoMacchinario3D();
+                                            } else {
+                                                disegnaSchedaObiettivoMacchinario3D();
                                             }
                                         }
                                     }
