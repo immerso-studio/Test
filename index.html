@@ -2,10 +2,15 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <title>Training VR Industriale</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Puntatore VR Bianca e Dinamica - Training Sicurezza</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; }
-        #info { position: absolute; top: 10px; width: 100%; text-align: center; color: white; font-family: sans-serif; pointer-events: none; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        #vr-instructions {
+            position: absolute; top: 10px; width: 100%; text-align: center; 
+            color: white; pointer-events: none; z-index: 10;
+            background: rgba(0,0,0,0.5); padding: 5px 0;
+        }
     </style>
     <script type="importmap">
         {
@@ -17,150 +22,318 @@
     </script>
 </head>
 <body>
-    <div id="info">Training Sicurezza VR - Premi il grilletto per interagire o teletrasportarti sul pavimento</div>
+    <div id="vr-instructions">
+        Puntatore bianco sempre attivo. Tieni premuto il Trigger sul pavimento per il Teletrasporto. <br>
+        Punta un oggetto e premi "A" (Destro) o "X" (Sinistro) per aprire/chiudere la scheda.
+    </div>
 
     <script type="module">
         import * as THREE from 'three';
         import { VRButton } from 'three/addons/webxr/VRButton.js';
         import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
-        // 1. Configurazione Base
+        // --- SETUP SCENA E RENDERER ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x505050);
+        scene.background = new THREE.Color(0x333333);
+        scene.fog = new THREE.FogExp2(0x333333, 0.05);
 
-        // Usiamo un "Camera Rig" per poter muovere l'utente (teletrasporto)
         const cameraRig = new THREE.Group();
-        cameraRig.position.set(0, 0, 3);
-        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+        cameraRig.position.set(0, 0, 2);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
         cameraRig.add(camera);
         scene.add(cameraRig);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.xr.enabled = true; // Abilita WebXR
+        renderer.xr.enabled = true;
         document.body.appendChild(renderer.domElement);
         document.body.appendChild(VRButton.createButton(renderer));
 
-        // 2. Illuminazione
-        scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 1.5));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-        dirLight.position.set(5, 10, 5);
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.5));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+        dirLight.position.set(5, 12, 5);
         scene.add(dirLight);
 
-        // 3. Creazione dell'Ambiente
-        // Pavimento (Area di teletrasporto)
-        const floorGeometry = new THREE.PlaneGeometry(20, 20);
-        const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
-        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        // --- AMBIENTE E OGGETTI ---
+        const floorGeo = new THREE.PlaneGeometry(30, 30);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x1f1f1f });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
-        // Array degli oggetti interattivi
-        const interactables = [];
+        const grid = new THREE.GridHelper(30, 30, 0x444444, 0x222222);
+        grid.position.y = 0.001;
+        scene.add(grid);
 
-        // Stazione DPI (Tavolo)
-        const tableGeometry = new THREE.BoxGeometry(2, 0.8, 1);
-        const tableMaterial = new THREE.MeshStandardMaterial({ color: 0x8b5a2b });
-        const table = new THREE.Mesh(tableGeometry, tableMaterial);
-        table.position.set(0, 0.4, -2);
+        const tableGeo = new THREE.BoxGeometry(2.2, 0.8, 0.9);
+        const tableMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+        const table = new THREE.Mesh(tableGeo, tableMat);
+        table.position.set(0, 0.4, -1.5);
         scene.add(table);
 
-        // Caschetto (Semicosfera gialla)
-        const helmetGeometry = new THREE.SphereGeometry(0.2, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-        const helmetMaterial = new THREE.MeshStandardMaterial({ color: 0xffd700 });
-        const helmet = new THREE.Mesh(helmetGeometry, helmetMaterial);
-        helmet.position.set(-0.5, 0.8, -2);
-        helmet.userData = { info: "Caschetto di Sicurezza: Obbligatorio in cantiere." };
+        const interactables = [];
+
+        // Caschetto
+        const helmetGeo = new THREE.SphereGeometry(0.18, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+        const helmetMat = new THREE.MeshStandardMaterial({ color: 0xffcc00 });
+        const helmet = new THREE.Mesh(helmetGeo, helmetMat);
+        helmet.position.set(-0.6, 0.8, -1.5);
+        helmet.userData = { 
+            title: "CASCHETTO DI SICUREZZA", 
+            info: "Protegge il capo da impatti. Obbligatorio in tutta l'area produttiva." 
+        };
         scene.add(helmet);
         interactables.push(helmet);
 
-        // Scarpe Antinfortunistiche (Cubi neri)
-        const shoeGeometry = new THREE.BoxGeometry(0.15, 0.1, 0.25);
-        const shoeMaterial = new THREE.MeshStandardMaterial({ color: 0x111111 });
-        const shoe = new THREE.Mesh(shoeGeometry, shoeMaterial);
-        shoe.position.set(0.5, 0.85, -2);
-        shoe.userData = { info: "Scarpe Antinfortunistiche: Protezione contro gli schiacciamenti." };
-        scene.add(shoe);
-        interactables.push(shoe);
+        // Imbragatura
+        const harnessGeo = new THREE.TorusGeometry(0.15, 0.04, 12, 24);
+        const harnessMat = new THREE.MeshStandardMaterial({ color: 0xff5500 });
+        const harness = new THREE.Mesh(harnessGeo, harnessMat);
+        harness.position.set(0, 0.95, -1.5);
+        harness.rotation.x = Math.PI / 2;
+        harness.userData = { 
+            title: "IMBRAGATURA ANTICADUTA", 
+            info: "Necessaria per lavori in quota (oltre 2m). Agganciare i cordini ai punti d'ancoraggio." 
+        };
+        scene.add(harness);
+        interactables.push(harness);
 
-        // Scheda Informativa (Pannello a muro)
-        const boardGeom = new THREE.PlaneGeometry(1.5, 1);
-        const boardMat = new THREE.MeshStandardMaterial({ color: 0x0055ff, side: THREE.DoubleSide });
-        const board = new THREE.Mesh(boardGeom, boardMat);
-        board.position.set(2, 1.5, -2);
-        board.rotation.y = -Math.PI / 4;
-        board.userData = { info: "TUTORIAL: Indossa sempre i DPI prima di entrare nell'area operativa." };
-        scene.add(board);
-        interactables.push(board);
+        // Scarpe
+        const shoesGeo = new THREE.BoxGeometry(0.16, 0.1, 0.28);
+        const shoesMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+        const shoes = new THREE.Mesh(shoesGeo, shoesMat);
+        shoes.position.set(0.6, 0.85, -1.5);
+        shoes.userData = { 
+            title: "SCARPE ANTINFORTUNISTICHE", 
+            info: "Dotate di puntale resistente e suola antiperforazione." 
+        };
+        scene.add(shoes);
+        interactables.push(shoes);
 
-        // 4. Controller VR e Raggi Laser (Raycaster)
+
+        // --- UI DINAMICA: SCHEDA INFORMATIVA ---
+        const infoGroup = new THREE.Group();
+        infoGroup.visible = false;
+        scene.add(infoGroup);
+
+        const infoCanvas = document.createElement('canvas');
+        infoCanvas.width = 512;
+        infoCanvas.height = 256;
+        const ctx = infoCanvas.getContext('2d');
+        const infoTexture = new THREE.CanvasTexture(infoCanvas);
+        
+        const infoPanelGeo = new THREE.PlaneGeometry(1.0, 0.5);
+        const infoPanelMat = new THREE.MeshBasicMaterial({ map: infoTexture, side: THREE.DoubleSide, transparent: true });
+        const infoPanelMesh = new THREE.Mesh(infoPanelGeo, infoPanelMat);
+        infoGroup.add(infoPanelMesh);
+
+        function aggiornaTestoScheda(titolo, descrizione) {
+            ctx.fillStyle = 'rgba(20, 30, 45, 0.95)';
+            ctx.fillRect(0, 0, 512, 256);
+            ctx.strokeStyle = '#ff6600';
+            ctx.lineWidth = 8;
+            ctx.strokeRect(0, 0, 512, 256);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 28px sans-serif';
+            ctx.fillText(titolo, 30, 50);
+            ctx.fillStyle = '#ff6600';
+            ctx.fillRect(30, 65, 452, 3);
+            ctx.fillStyle = '#dddddd';
+            ctx.font = '20px sans-serif';
+            
+            const parole = descrizione.split(' ');
+            let linea = '';
+            let y = 105;
+            const maxWidth = 452;
+            const lineHeight = 28;
+            for (let n = 0; n < parole.length; n++) {
+                let testLinea = linea + parole[n] + ' ';
+                if (ctx.measureText(testLinea).width > maxWidth && n > 0) {
+                    ctx.fillText(linea, 30, y);
+                    linea = parole[n] + ' ';
+                    y += lineHeight;
+                } else { linea = testLinea; }
+            }
+            ctx.fillText(linea, 30, y);
+            ctx.fillStyle = '#888888';
+            ctx.font = 'italic 16px sans-serif';
+            ctx.fillText("Premi di nuovo A/X per chiudere", 30, 230);
+            infoTexture.needsUpdate = true;
+        }
+
+
+        // --- TELETRASPORTO VISUALE ---
+        const markerGeo = new THREE.RingGeometry(0.25, 0.3, 32);
+        markerGeo.rotateX(-Math.PI / 2);
+        const markerMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, side: THREE.DoubleSide });
+        const teleportMarker = new THREE.Mesh(markerGeo, markerMat);
+        teleportMarker.visible = false;
+        scene.add(teleportMarker);
+
+
+        // --- CONTROLLER VR E PUNTATORE BIANCO SEMPRE ATTIVO ---
         const controller1 = renderer.xr.getController(0);
         const controller2 = renderer.xr.getController(1);
         cameraRig.add(controller1);
         cameraRig.add(controller2);
 
-        // Modelli visivi per i controller
         const controllerModelFactory = new XRControllerModelFactory();
         const grip1 = renderer.xr.getControllerGrip(0);
         grip1.add(controllerModelFactory.createControllerModel(grip1));
         cameraRig.add(grip1);
-
         const grip2 = renderer.xr.getControllerGrip(1);
         grip2.add(controllerModelFactory.createControllerModel(grip2));
         cameraRig.add(grip2);
 
-        // Laser per puntare
-        const laserGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -5)]);
-        const laserMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
-        const laser1 = new THREE.Line(laserGeometry, laserMaterial);
-        const laser2 = new THREE.Line(laserGeometry, laserMaterial);
-        controller1.add(laser1);
-        controller2.add(laser2);
+        // Geometria laser: da 0 a -1, la allungheremo via codice
+        const laserGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]);
+        
+        // MODIFICA QUI: Materiale ora BIANCO e di default VISIBILE
+        const laserMat = new THREE.LineBasicMaterial({ color: 0xffffff }); 
+        
+        const line1 = new THREE.Line(laserGeo, laserMat); 
+        line1.name = 'line'; // Nome utile per trovarla
+        line1.scale.z = 10;   // Lunghezza massima di default
+        line1.visible = true; // SEMPRE VISIBILE ORA
+        controller1.add(line1);
 
-        // 5. Logica di Interazione e Teletrasporto
-        const raycaster = new THREE.Raycaster();
-        const tempMatrix = new THREE.Matrix4();
+        const line2 = new THREE.Line(laserGeo, laserMat.clone()); // Clona materiale per indipendenza se serve
+        line2.name = 'line';
+        line2.scale.z = 10;
+        line2.visible = true;
+        controller2.add(line2);
 
-        function onSelectStart(event) {
-            const controller = event.target;
-            tempMatrix.identity().extractRotation(controller.matrixWorld);
-            raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
 
-            // 1. Controlla interazioni con gli oggetti/tutorial
-            const intersectsObjects = raycaster.intersectObjects(interactables);
-            if (intersectsObjects.length > 0) {
-                const object = intersectsObjects[0].object;
-                console.log(object.userData.info);
-                // In una vera app, qui aggiorneresti un testo su un Canvas 3D o riprodurresti un audio
-                object.material.emissive.setHex(0x333333); // Feedback visivo
-                setTimeout(() => object.material.emissive.setHex(0x000000), 500);
-                return; // Ferma l'esecuzione per non teletrasportarsi sugli oggetti
-            }
+        // --- LOGICA GESTIONE TELETRASPORTO (TRIGGER) ---
+        let isTeleportMode = false;
+        let activeTeleportController = null;
+        let teleportPoint = new THREE.Vector3();
 
-            // 2. Controlla il teletrasporto sul pavimento
-            const intersectsFloor = raycaster.intersectObject(floor);
-            if (intersectsFloor.length > 0) {
-                const destination = intersectsFloor[0].point;
-                // Sposta il Camera Rig al punto mirato
-                cameraRig.position.set(destination.x, cameraRig.position.y, destination.z);
-            }
+        function onTriggerStart(event) {
+            isTeleportMode = true;
+            activeTeleportController = event.target;
+            // Non spegniamo/accendiamo la linea, è sempre attiva.
         }
 
-        controller1.addEventListener('selectstart', onSelectStart);
-        controller2.addEventListener('selectstart', onSelectStart);
+        function onTriggerEnd(event) {
+            if (isTeleportMode && teleportMarker.visible && activeTeleportController === event.target) {
+                cameraRig.position.set(teleportPoint.x, cameraRig.position.y, teleportPoint.z);
+            }
+            isTeleportMode = false;
+            teleportMarker.visible = false;
+            activeTeleportController = null;
+        }
 
-        // 6. Loop di Rendering
+        controller1.addEventListener('selectstart', onTriggerStart);
+        controller1.addEventListener('selectend', onTriggerEnd);
+        controller2.addEventListener('selectstart', onTriggerStart);
+        controller2.addEventListener('selectend', onTriggerEnd);
+
+
+        // --- LOOP ANIMAZIONE PRINCIPALE (PUNTATORE DINAMICO, HOVER, TASTI A/X) ---
+        const raycaster = new THREE.Raycaster();
+        const workingMatrix = new THREE.Matrix4();
+        const DEFAULT_LASER_LENGTH = 10;
+        
+        const prevButtonsState = { left: false, right: false };
+        let currentHoverObject = null;
+        let isInfoPanelOpen = false;
+
+        renderer.setAnimationLoop(() => {
+            const session = renderer.xr.getSession();
+            
+            // Resetta Hover
+            if (currentHoverObject) {
+                currentHoverObject.material.emissive.setHex(0x000000);
+                currentHoverObject = null;
+            }
+
+            if (session) {
+                for (const source of session.inputSources) {
+                    const controller = source.handedness === 'right' ? controller1 : controller2;
+                    const line = controller.getObjectByName('line'); // Trova la linea del controller
+
+                    // Resetta lunghezza laser di default all'inizio di ogni frame
+                    line.scale.z = DEFAULT_LASER_LENGTH;
+
+                    workingMatrix.identity().extractRotation(controller.matrixWorld);
+                    raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                    raycaster.ray.direction.set(0, 0, -1).applyMatrix4(workingMatrix);
+
+                    // --- LOGICA PUNTATORE DINAMICO (Novità) ---
+                    // Controlla interazioni generali (tutto ciò che è interattivo e il pavimento)
+                    let closestDistance = DEFAULT_LASER_LENGTH;
+
+                    // 1. Controlla oggetti
+                    const objIntersects = raycaster.intersectObjects(interactables);
+                    if (objIntersects.length > 0) {
+                        currentHoverObject = objIntersects[0].object;
+                        // Imposta la lunghezza del laser alla distanza dell'oggetto
+                        closestDistance = objIntersects[0].distance;
+                        
+                        // Solo se NON stiamo teletrasportandoci, mostriamo l'hover
+                        if (!isTeleportMode) {
+                            currentHoverObject.material.emissive.setHex(0x333333);
+                        }
+                    }
+
+                    // 2. Controlla pavimento (prioritario se in modalità Teletrasporto)
+                    const floorIntersects = raycaster.intersectObject(floor);
+                    if (floorIntersects.length > 0) {
+                        const floorDistance = floorIntersects[0].distance;
+                        
+                        if (isTeleportMode && controller === activeTeleportController) {
+                            // Se in teletrasporto, il laser si ferma sul pavimento e aggiorna la distanza
+                            closestDistance = floorDistance;
+                            teleportPoint.copy(floorIntersects[0].point);
+                            teleportMarker.position.copy(teleportPoint);
+                            teleportMarker.position.y = 0.01;
+                            teleportMarker.visible = true;
+                        } else if (!objIntersects.length) {
+                            // Se non c'è teletrasporto attivo e non stiamo puntando un oggetto,
+                            // ma stiamo puntando il pavimento, la linea si accorcia fino a terra.
+                            closestDistance = floorDistance;
+                        }
+                    } else if (isTeleportMode && controller === activeTeleportController) {
+                        teleportMarker.visible = false;
+                    }
+
+                    // AGGIORNA LA LUNGHEZZA FISICA DELLA LINEA
+                    line.scale.z = closestDistance;
+
+
+                    // --- LETTURA PULSANTI "A" E "X" ---
+                    if (source.gamepad) {
+                        const buttonPressed = source.gamepad.buttons[4]?.pressed || false;
+                        const hand = source.handedness;
+                        if (buttonPressed && !prevButtonsState[hand]) {
+                            if (isInfoPanelOpen) {
+                                infoGroup.visible = false;
+                                isInfoPanelOpen = false;
+                            } else if (currentHoverObject) {
+                                const data = currentHoverObject.userData;
+                                aggiornaTestoScheda(data.title, data.info);
+                                infoGroup.position.copy(currentHoverObject.position);
+                                infoGroup.position.y += 0.5;
+                                infoGroup.lookAt(cameraRig.position.x, infoGroup.position.y, cameraRig.position.z);
+                                infoGroup.visible = true;
+                                isInfoPanelOpen = true;
+                            }
+                        }
+                        prevButtonsState[hand] = buttonPressed;
+                    }
+                }
+            }
+            renderer.render(scene, camera);
+        });
+
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        renderer.setAnimationLoop(() => {
-            renderer.render(scene, camera);
-        });
     </script>
 </body>
 </html>

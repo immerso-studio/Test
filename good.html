@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Corso VR - Formazione Sicurezza</title>
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+  <script src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/aframe-blink-controls@0.4.3/dist/aframe-blink-controls.min.js"></script>
+
+  <script>
+    // Corregge la rotazione del modello .GLB delle mani
+    AFRAME.registerComponent('fix-rotazione-mani', {
+      schema: {
+        rotazione: {type: 'vec3', default: {x: 90, y: 180, z: 0}}
+      },
+      init: function () {
+        this.el.addEventListener('model-loaded', () => {
+          this.el.setAttribute('rotation', this.data.rotazione);
+        });
+      }
+    });
+
+    // Componente Outline aggiornato per supportare una specifica submesh
+    AFRAME.registerComponent('outline', {
+      schema: {
+        color: {default: '#ffffff'},
+        scale: {default: 1.08},
+        pulse: {default: false},
+        frequency: {default: 1},
+        submesh: {type: 'string', default: ''} // Nome della mesh specifica (opzionale)
+      },
+
+      init: function () {
+        this.outlines = [];
+        this.outlineCreated = false;
+        this.isGLTF = this.el.hasAttribute('gltf-model');
+        this.raycasterEl = null;
+
+        this.outlineUniforms = {
+          uThickness: { value: (this.data.scale - 1) * 0.25 }
+        };
+
+        const setup = () => {
+          if (this.outlineCreated) return;
+          if (this.isGLTF && !this.el.getObject3D('mesh')) return;
+
+          this.createOutline();
+          this.outlineCreated = true;
+        };
+
+        this.el.addEventListener('loaded', setup);
+        this.el.addEventListener('model-loaded', setup);
+        
+        setTimeout(setup, 0);
+
+        this.el.addEventListener('raycaster-intersected', (evt) => {
+          if (!this.data.submesh) {
+            this.outlines.forEach(mesh => { mesh.visible = true; });
+          } else {
+            this.raycasterEl = evt.detail.el; // Traccia il controller che interseca
+          }
+        });
+        
+        this.el.addEventListener('raycaster-intersected-cleared', () => {
+          this.outlines.forEach(mesh => { mesh.visible = false; });
+          this.raycasterEl = null;
+        });
+      },
+
+      createOutline: function () {
+        const rootObj = this.el.getObject3D('mesh');
+        if (!rootObj) return;
+
+        const material = new THREE.MeshBasicMaterial({
+          color: this.data.color,
+          side: THREE.BackSide,
+          depthTest: false,
+          depthWrite: false,
+          transparent: true,
+          opacity: 1.0,
+        });
+
+        if (this.isGLTF) {
+          material.onBeforeCompile = (shader) => {
+            shader.uniforms.uThickness = this.outlineUniforms.uThickness;
+            shader.vertexShader = 'uniform float uThickness;\n' + shader.vertexShader;
+            shader.vertexShader = shader.vertexShader.replace(
+              '#include <begin_vertex>',
+              `
+              #include <begin_vertex>
+              transformed += normal * uThickness;
+              `
+            );
+          };
+        }
+
+        const meshesToOutline = [];
+        
+        if (rootObj.isMesh) {
+          if (!this.data.submesh || rootObj.name === this.data.submesh || rootObj.name === 'Mesh.023') {
+            meshesToOutline.push(rootObj);
+          }
+        } else {
+          rootObj.traverse((node) => {
+            if (node.isMesh && (!node.userData || !node.userData.isOutline)) {
+              if (!this.data.submesh) {
+                meshesToOutline.push(node);
+              } else {
+                // Genera l'outline solo se il nodo corrente o il suo parent corrispondono al target
+                let current = node;
+                let match = false;
+                while (current && current !== rootObj) {
+                  if (current.name === this.data.submesh || current.name === 'Mesh.023') {
+                    match = true;
+                    break;
+                  }
+                  current = current.parent;
+                }
+                if (match) meshesToOutline.push(node);
+              }
+            }
+          });
+        }
+
+        meshesToOutline.forEach((node) => {
+          if (!node.geometry) return;
+          
+          const geometry = node.geometry.clone();
+          const outlineSubMesh = new THREE.Mesh(geometry, material);
+          
+          if (this.isGLTF) {
+            outlineSubMesh.scale.set(1, 1, 1);
+          } else {
+            outlineSubMesh.scale.setScalar(this.data.scale);
+          }
+          
+          outlineSubMesh.visible = false;
+          outlineSubMesh.renderOrder = 999;
+          outlineSubMesh.userData.isOutline = true; 
+          
+          node.add(outlineSubMesh);
+          this.outlines.push(outlineSubMesh);
+        });
+      },
+
+      tick: function (t) {
+        // Gestione visibilità dinamica basata sul puntamento di precisione della submesh
+        if (this.data.submesh && this.raycasterEl) {
+          const raycaster = this.raycasterEl.components.raycaster;
+          const intersection = raycaster.getIntersection(this.el);
+          if (intersection && intersection.object) {
+            let hit = false;
+            let obj = intersection.object;
+            while (obj) {
+              if (obj.name === this.data.submesh || obj.name === 'Mesh.023') {
+                hit = true;
+                break;
+              }
+              obj = obj.parent;
+            }
+            this.outlines.forEach(mesh => { mesh.visible = hit; });
+          } else {
+            this.outlines.forEach(mesh => { mesh.visible = false; });
+          }
+        }
+
+        if (!this.data.pulse || this.outlines.length === 0) return;
+
+        if (this.isGLTF) {
+          const baseThickness = (this.data.scale - 1) * 0.25;
+          this.outlineUniforms.uThickness.value = baseThickness + 0.004 * Math.sin(this.data.frequency * t / 120);
+        } else {
+          const s = this.data.scale + 0.02 * Math.sin(this.data.frequency * t / 120);
+          this.outlines.forEach(mesh => {
+            mesh.scale.setScalar(s);
+          });
+        }
+      }
+    });
+
+    // Componente per sincronizzare teleport e laser
+    AFRAME.registerComponent('sync-teleport-laser', {
+      init: function () {
+        this.synced = false;
+        this.el.addEventListener('loaded', () => { this.setupSync(); });
+        setTimeout(() => { if (!this.synced) this.setupSync(); }, 1000);
+      },
+      setupSync: function () {
+        const blinkControls = this.el.components['blink-controls'];
+        const raycaster = this.el.components['raycaster'];
+        if (!blinkControls || !raycaster) return;
+        blinkControls.data.curveTint = '#ffffff';
+        blinkControls.data.curveOpacity = 0.8;
+        if (blinkControls.raycaster && raycaster.raycaster) {
+          Object.defineProperty(blinkControls, 'raycaster', {
+            get: function() { return raycaster.raycaster; },
+            configurable: true
+          });
+        }
+        this.synced = true;
+      },
+      tick: function () {
+        const blinkControls = this.el.components['blink-controls'];
+        const raycaster = this.el.components['raycaster'];
+        if (!blinkControls || !raycaster) return;
+        if (blinkControls.curveMaterial) {
+          blinkControls.curveMaterial.color.set('#ffffff');
+          blinkControls.curveMaterial.opacity = 0.8;
+        }
+        if (raycaster.line) {
+          if (blinkControls.isTeleporting) {
+            raycaster.line.visible = false;
+          } else if (raycaster.data.showLine) {
+            raycaster.line.visible = true;
+          }
+        }
+      }
+    });
+
+    // Componente per forzare il rendering in primo piano di elementi UI in VR
+    AFRAME.registerComponent('render-on-top', {
+      schema: {
+        priority: {type: 'int', default: 1}
+      },
+      init: function () {
+        this.el.sceneEl.renderer.sortObjects = true;
+      },
+      tick: function () {
+        const order = 9990 + this.data.priority;
+        this.el.object3D.traverse((node) => {
+          let current = node;
+          let ownerEl = null;
+          while (current) {
+            if (current.el) {
+              ownerEl = current.el;
+              break;
+            }
+            current = current.parent;
+          }
+          if (ownerEl && ownerEl !== this.el) return;
+
+          if (node.renderOrder !== order) {
+            node.renderOrder = order;
+          }
+
+          if (node.material) {
+            const materials = Array.isArray(node.material) ? node.material : [node.material];
+            materials.forEach((mat) => {
+              if (mat.depthTest !== false || mat.depthWrite !== false) {
+                mat.depthTest = false;
+                mat.depthWrite = false;
+                mat.needsUpdate = true;
+              }
+            });
+          }
+        });
+      }
+    });
+
+    // Sistema globale per gestire le schede informative e il tutorial di onboarding
+    AFRAME.registerSystem('info-card-system', {
+      init: function () {
+        this.activeCard = null;
+        this.cardData = null;
+        this.isCardOpen = false;
+        this.tutorialStep = 0; // 0 = chiuso, 1, 2, 3 = passi del tutorial
+
+        // Pre-carica le immagini del tutorial
+        this.tutorialImages = [null, null, null];
+        ['assets/tutorial/1.webp', 'assets/tutorial/2.webp', 'assets/tutorial/3.webp'].forEach((src, i) => {
+          const img = new Image();
+          img.src = src;
+          this.tutorialImages[i] = img;
+        });
+      },
+      wrapText: function (ctx, text, x, y, maxWidth, lineHeight) {
+        const words = text.split(' ');
+        let line = '';
+        let currentY = y;
+        for (let n = 0; n < words.length; n++) {
+          let testLine = line + words[n] + ' ';
+          let metrics = ctx.measureText(testLine);
+          let testWidth = metrics.width;
+          if (testWidth > maxWidth && n > 0) {
+            ctx.fillText(line, x, currentY);
+            line = words[n] + ' ';
+            currentY += lineHeight;
+          } else {
+            line = testLine;
+          }
+        }
+        ctx.fillText(line, x, currentY);
+      },
+      drawCardCanvas: function (title, description) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 576;
+        const ctx = canvas.getContext('2d');
+
+        // Sfondo scheda con angoli arrotondati
+        const x = 10, y = 10, w = 1004, h = 556, r = 30;
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+        ctx.shadowBlur = 25;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 12;
+
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, '#15151e');
+        grad.addColorStop(1, '#0b0b0e');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        // Bordo luminoso sfumato (da viola a ciano)
+        ctx.save();
+        ctx.lineWidth = 4;
+        const borderGrad = ctx.createLinearGradient(0, 0, w, h);
+        borderGrad.addColorStop(0, '#7209b7');
+        borderGrad.addColorStop(1, '#4cc9f0');
+        ctx.strokeStyle = borderGrad;
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+
+        // Titolo
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 46px sans-serif';
+        ctx.fillText(title, 60, 95);
+
+        // Linea divisoria sottile
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(60, 130);
+        ctx.lineTo(964, 130);
+        ctx.stroke();
+
+        // Descrizione (con a capo automatico)
+        ctx.fillStyle = '#cccccc';
+        ctx.font = '30px sans-serif';
+        this.wrapText(ctx, description, 60, 190, 900, 44);
+
+        // Pulsante di chiusura (cerchio rosa-fucsia neon con X bianca)
+        const cx = 930, cy = 80, cr = 28;
+        ctx.fillStyle = '#f72585';
+        ctx.beginPath();
+        ctx.arc(cx, cy, cr, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx - 10, cy - 10);
+        ctx.lineTo(cx + 10, cy + 10);
+        ctx.moveTo(cx + 10, cy - 10);
+        ctx.lineTo(cx - 10, cy + 10);
+        ctx.stroke();
+
+        return canvas;
+      },
+      drawTutorialCanvas: function (step) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 576;
+        const ctx = canvas.getContext('2d');
+
+        // Sfondo scheda con angoli arrotondati
+        const x = 10, y = 10, w = 1004, h = 556, r = 30;
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+        ctx.shadowBlur = 25;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 12;
+
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, '#15151e');
+        grad.addColorStop(1, '#0b0b0e');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        // Bordo luminoso sfumato
+        ctx.save();
+        ctx.lineWidth = 4;
+        const borderGrad = ctx.createLinearGradient(0, 0, w, h);
+        borderGrad.addColorStop(0, '#7209b7');
+        borderGrad.addColorStop(1, '#4cc9f0');
+        ctx.strokeStyle = borderGrad;
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+
+        // Dati passo tutorial
+        let title = '';
+        let desc = '';
+        let btnText = 'Clicca A →';
+        if (step === 1) {
+          title = '1. Puntamento Laser';
+          desc = 'Punta il controller verso gli oggetti interattivi per evidenziarli con un contorno bianco. Questo ti consente di agganciarli.';
+        } else if (step === 2) {
+          title = '2. Selezione & Info';
+          desc = 'Premi il tasto "A" (controller destro) o "X" (sinistro) o fai click con il mouse per aprire/chiudere la scheda informativa dettagliata.';
+        } else if (step === 3) {
+          title = '3. Teletrasporto';
+          desc = 'Tieni premuto il Trigger (grilletto) per mirare a terra. Rilascialo per teletrasportarti nella posizione evidenziata.';
+          btnText = 'Clicca A →';
+        }
+
+        // Testo (colonna destra)
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 44px sans-serif';
+        ctx.fillText(title, 500, 95);
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(500, 130);
+        ctx.lineTo(964, 130);
+        ctx.stroke();
+
+        ctx.fillStyle = '#cccccc';
+        ctx.font = '28px sans-serif';
+        this.wrapText(ctx, desc, 500, 190, 460, 42);
+
+        // Illustrazione reale (colonna sinistra) — area: x 30..470, y 80..530
+        const img = this.tutorialImages[step - 1];
+        if (img) {
+          const drawInArea = () => {
+            const areaX = 30, areaY = 80, areaW = 430, areaH = 450;
+            const scale = Math.min(areaW / img.naturalWidth, areaH / img.naturalHeight);
+            const drawW = img.naturalWidth * scale;
+            const drawH = img.naturalHeight * scale;
+            const drawX = areaX + (areaW - drawW) / 2;
+            const drawY = areaY + (areaH - drawH) / 2;
+
+            ctx.save();
+            // Clip arrotondato per l'immagine
+            const cr = 14;
+            ctx.beginPath();
+            ctx.moveTo(drawX + cr, drawY);
+            ctx.arcTo(drawX + drawW, drawY, drawX + drawW, drawY + drawH, cr);
+            ctx.arcTo(drawX + drawW, drawY + drawH, drawX, drawY + drawH, cr);
+            ctx.arcTo(drawX, drawY + drawH, drawX, drawY, cr);
+            ctx.arcTo(drawX, drawY, drawX + drawW, drawY, cr);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(img, drawX, drawY, drawW, drawH);
+            ctx.restore();
+          };
+
+          if (img.complete && img.naturalWidth > 0) {
+            drawInArea();
+          } else {
+            // L'immagine non e' ancora caricata: attendi e ridisegna
+            img.onload = () => {
+              drawInArea();
+            };
+          }
+        }
+
+        // Linea divisoria verticale tra immagine e testo
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(490, 40);
+        ctx.lineTo(490, 536);
+        ctx.stroke();
+        ctx.restore();
+
+        // Indicatori Pagine (pallini azzurri) CENTRATI in basso
+        const centerX = 512; // centro canvas 1024/2
+        const dotY = 520;
+        const dotRadius = 8;
+        const spacing = 30;
+        const totalDotsWidth = 2 * spacing; // 3 pallini, distanza tra i centri: 0, 30, 60 -> larghezza 60
+        
+        for (let i = 1; i <= 3; i++) {
+          const dotX = centerX - totalDotsWidth/2 + (i-1) * spacing;
+          ctx.fillStyle = (i === step) ? '#4cc9f0' : 'rgba(255, 255, 255, 0.2)';
+          ctx.beginPath();
+          ctx.arc(dotX, dotY, dotRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Bottone Avanti/Inizia con testo "Clicca A →"
+        const bx = 760, by = 480, bw = 200, bh = 60, brad = 12;
+        ctx.save();
+        const btnGrad = ctx.createLinearGradient(bx, by, bx, by + bh);
+        btnGrad.addColorStop(0, '#7209b7');
+        btnGrad.addColorStop(1, '#f72585');
+        ctx.fillStyle = btnGrad;
+        ctx.beginPath();
+        ctx.moveTo(bx + brad, by);
+        ctx.arcTo(bx + bw, by, bx + bw, by + bh, brad);
+        ctx.arcTo(bx + bw, by + bh, bx, by + bh, brad);
+        ctx.arcTo(bx, by + bh, bx, by, brad);
+        ctx.arcTo(bx, by, bx + bw, by, brad);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(btnText, bx + bw / 2, by + bh / 2 + 8);
+        ctx.restore();
+
+        return canvas;
+      },
+      startTutorial: function () {
+        this.tutorialStep = 1;
+        this.showTutorialCard();
+      },
+      // Chiamato da controller-input quando A/X viene premuto durante il tutorial
+      advanceTutorial: function () {
+        if (this.tutorialStep <= 0) return;
+        if (this.tutorialStep < 3) {
+          this.tutorialStep++;
+          this.updateTutorialTexture();
+        } else {
+          // Ultima slide: chiudi il tutorial
+          this.hideCard();
+          this.tutorialStep = 0;
+        }
+      },
+      isTutorialActive: function () {
+        return this.tutorialStep > 0 && this.activeCard && this.activeCard.getAttribute('id') === 'tutorial-card';
+      },
+      updateTutorialTexture: function () {
+        if (!this.activeCard) return;
+        const canvas = this.drawTutorialCanvas(this.tutorialStep);
+        const texture = new THREE.CanvasTexture(canvas);
+        // Animazione di transizione slide (piccolo shrink + grow)
+        this.activeCard.setAttribute('animation', 'property: scale; to: 0.85 0.85 0.85; dur: 100; easing: easeInQuad');
+        setTimeout(() => {
+          const mesh = this.activeCard && this.activeCard.getObject3D('mesh');
+          if (mesh && mesh.material) {
+            mesh.material.map = texture;
+            mesh.material.needsUpdate = true;
+          }
+          if (this.activeCard) {
+            this.activeCard.setAttribute('animation', 'property: scale; to: 1 1 1; dur: 200; easing: easeOutBack');
+          }
+        }, 110);
+      },
+      showTutorialCard: function () {
+        const camera = document.querySelector('#camera');
+        if (!camera) return;
+
+        const canvas = this.drawTutorialCanvas(this.tutorialStep);
+        const texture = new THREE.CanvasTexture(canvas);
+
+        this.hideCard();
+
+        const card = document.createElement('a-plane');
+        card.setAttribute('id', 'tutorial-card');
+        card.setAttribute('class', 'close-interactive');
+        card.setAttribute('position', '0 -0.15 -1');
+        card.setAttribute('width', '0.8');
+        card.setAttribute('height', '0.45');
+        card.setAttribute('material', 'shader: flat; transparent: true;');
+        card.setAttribute('render-on-top', 'priority: 1');
+        card.setAttribute('animation', 'property: scale; from: 0 0 0; to: 1 1 1; dur: 400; easing: easeOutElastic');
+
+        card.addEventListener('loaded', () => {
+          const mesh = card.getObject3D('mesh');
+          if (mesh && mesh.material) {
+            mesh.material.map = texture;
+            mesh.material.needsUpdate = true;
+          }
+        });
+
+        // Qualsiasi click sulla card avanza il tutorial (nessun controllo UV preciso)
+        card.addEventListener('click', () => {
+          this.advanceTutorial();
+        });
+
+        camera.appendChild(card);
+        this.activeCard = card;
+        this.isCardOpen = true;
+
+        this.disableTeleport();
+        this.updateControllerRaycasters(true);
+      },
+      createCard: function (data) {
+        this.hideCard();
+        const camera = document.querySelector('#camera');
+        if (!camera) return;
+
+        const canvas = this.drawCardCanvas(data.title, data.description);
+        const texture = new THREE.CanvasTexture(canvas);
+
+        const card = document.createElement('a-plane');
+        card.setAttribute('id', 'info-card-follow');
+        card.setAttribute('class', 'close-interactive');
+        card.setAttribute('position', '0 -0.15 -1');
+        card.setAttribute('width', '0.8');
+        card.setAttribute('height', '0.45');
+        card.setAttribute('material', 'shader: flat; transparent: true;');
+        card.setAttribute('render-on-top', 'priority: 1');
+        card.setAttribute('animation', 'property: scale; from: 0 0 0; to: 1 1 1; dur: 400; easing: easeOutElastic');
+
+        card.addEventListener('loaded', () => {
+          const mesh = card.getObject3D('mesh');
+          if (mesh && mesh.material) {
+            mesh.material.map = texture;
+            mesh.material.needsUpdate = true;
+          }
+        });
+
+        card.addEventListener('click', (evt) => {
+          const intersection = evt.detail.intersection;
+          if (intersection && intersection.uv) {
+            const uv = intersection.uv;
+            if (uv.x > 0.84 && uv.y > 0.80) {
+              this.animateAndHide();
+            }
+          }
+        });
+
+        camera.appendChild(card);
+        this.activeCard = card;
+        this.cardData = data;
+        this.isCardOpen = true;
+
+        this.disableTeleport();
+        this.updateControllerRaycasters(true);
+      },
+      animateAndHide: function () {
+        if (this.activeCard) {
+          this.activeCard.setAttribute('animation', 'property: scale; to: 0 0 0; dur: 200; easing: easeInBack');
+          setTimeout(() => this.hideCard(), 200);
+        }
+      },
+      updateControllerRaycasters: function (cardOpen) {
+        const leftHand = document.querySelector('#leftHand');
+        const rightHand = document.querySelector('#rightHand');
+        if (leftHand && leftHand.components['raycaster']) { leftHand.setAttribute('raycaster', 'objects', cardOpen ? '.close-interactive' : '.interattivo'); }
+        if (rightHand && rightHand.components['raycaster']) { rightHand.setAttribute('raycaster', 'objects', cardOpen ? '.close-interactive' : '.interattivo'); }
+      },
+      disableTeleport: function () {
+        const leftHand = document.querySelector('#leftHand');
+        const rightHand = document.querySelector('#rightHand');
+        if (leftHand && leftHand.components['blink-controls']) leftHand.setAttribute('blink-controls', 'enabled', false);
+        if (rightHand && rightHand.components['blink-controls']) rightHand.setAttribute('blink-controls', 'enabled', false);
+      },
+      enableTeleport: function () {
+        const leftHand = document.querySelector('#leftHand');
+        const rightHand = document.querySelector('#rightHand');
+        if (leftHand && leftHand.components['blink-controls']) leftHand.setAttribute('blink-controls', 'enabled', true);
+        if (rightHand && rightHand.components['blink-controls']) rightHand.setAttribute('blink-controls', 'enabled', true);
+      },
+      hideCard: function () {
+        if (this.activeCard && this.activeCard.parentNode) { this.activeCard.parentNode.removeChild(this.activeCard); }
+        this.activeCard = null;
+        this.cardData = null;
+        this.isCardOpen = false;
+        this.enableTeleport();
+        this.updateControllerRaycasters(false);
+      },
+      isCardVisible: function () { return this.isCardOpen; }
+    });
+
+    // Componente Info-Card aggiornato per gestire il clic filtrato sulla submesh
+    AFRAME.registerComponent('info-card-trigger', {
+      schema: {
+        title: {type: 'string', default: 'Informazioni'},
+        description: {type: 'string', default: 'Descrizione dettagliata dell\'oggetto selezionato.'},
+        submesh: {type: 'string', default: ''} // Nome della mesh specifica (opzionale)
+      },
+      init: function () {
+        this.system = document.querySelector('a-scene').systems['info-card-system'];
+        this.raycasterEl = null;
+
+        this.el.addEventListener('raycaster-intersected', (evt) => { 
+          if (!this.data.submesh) {
+            this.intersected = true; 
+          } else {
+            this.raycasterEl = evt.detail.el;
+          }
+        });
+        
+        this.el.addEventListener('raycaster-intersected-cleared', () => { 
+          this.intersected = false; 
+          this.raycasterEl = null;
+        });
+      },
+      tick: function () {
+        if (this.data.submesh && this.raycasterEl) {
+          const raycaster = this.raycasterEl.components.raycaster;
+          const intersection = raycaster.getIntersection(this.el);
+          if (intersection && intersection.object) {
+            let hit = false;
+            let obj = intersection.object;
+            while (obj) {
+              if (obj.name === this.data.submesh || obj.name === 'Mesh.023') {
+                hit = true;
+                break;
+              }
+              obj = obj.parent;
+            }
+            this.intersected = hit;
+          } else {
+            this.intersected = false;
+          }
+        }
+      },
+      openCard: function () {
+        if (this.intersected && this.system && !this.system.isCardVisible()) {
+          this.system.createCard({ title: this.data.title, description: this.data.description });
+        }
+      }
+    });
+
+    // Componente per gestire gli input dei controller
+    AFRAME.registerComponent('controller-input', {
+      init: function () {
+        this.system = document.querySelector('a-scene').systems['info-card-system'];
+        this.el.addEventListener('xbuttondown', () => { this.handleInput(); });
+        this.el.addEventListener('abuttondown', () => { this.handleInput(); });
+        this.el.addEventListener('click', () => { this.handleInput(); });
+      },
+      handleInput: function () {
+        // Se il tutorial è attivo, A/X avanzano la slide (non la chiudono)
+        if (this.system.isTutorialActive()) {
+          this.system.advanceTutorial();
+          return;
+        }
+        // Se una scheda informativa è aperta, A/X la chiudono
+        if (this.system.isCardVisible()) {
+          this.system.animateAndHide();
+          return;
+        }
+        // Altrimenti, cerca un oggetto puntato e apri la sua scheda
+        const intersectedObjects = document.querySelectorAll('.interattivo');
+        let activeObject = null;
+        intersectedObjects.forEach(obj => {
+          if (obj.components['info-card-trigger'] && obj.components['info-card-trigger'].intersected) { activeObject = obj; }
+        });
+        if (activeObject) { activeObject.components['info-card-trigger'].openCard(); }
+      }
+    });
+
+    // Gestione dell'overlay di benvenuto e riconoscimento del visore VR
+    window.addEventListener('DOMContentLoaded', () => {
+      const enterVrBtn = document.getElementById('enter-vr-btn');
+      const startOverlay = document.getElementById('start-overlay');
+      const sceneEl = document.querySelector('a-scene');
+
+      const checkVR = async () => {
+        let isVRSupported = false;
+        if (navigator.xr) {
+          try {
+            isVRSupported = await navigator.xr.isSessionSupported('immersive-vr');
+          } catch (e) {
+            console.log("WebXR immersive-vr check failed:", e);
+          }
+        }
+        
+        const isVRHeadsetUA = /Quest|Oculus|Pico|Vive/i.test(navigator.userAgent);
+        
+        if (sceneEl.hasLoaded) {
+          setupVRButton(isVRSupported || isVRHeadsetUA || AFRAME.utils.device.checkHeadsetConnected());
+        } else {
+          sceneEl.addEventListener('loaded', () => {
+            setupVRButton(isVRSupported || isVRHeadsetUA || AFRAME.utils.device.checkHeadsetConnected());
+          });
+        }
+      };
+
+      const setupVRButton = (showVR) => {
+        if (showVR) {
+          enterVrBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" style="vertical-align: middle; margin-right: 8px;"><path d="M21 4H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-9.5 12c-1.38 0-2.5-1.12-2.5-2.5S10.12 11 11.5 11s2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5zm7 0c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            Visualizza in VR
+          `;
+          enterVrBtn.dataset.mode = 'vr';
+        } else {
+          enterVrBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 8px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+            Avvia Esperienza 3D
+          `;
+          enterVrBtn.dataset.mode = 'desktop';
+        }
+      };
+
+      checkVR();
+
+      enterVrBtn.addEventListener('click', () => {
+        startOverlay.classList.add('fade-out');
+        const isVR = enterVrBtn.dataset.mode === 'vr';
+        setTimeout(() => {
+          startOverlay.style.display = 'none';
+          if (isVR) {
+            sceneEl.enterVR();
+          } else {
+            // Su desktop, avvia il tutorial all'interno della scena 3D
+            const system = sceneEl.systems['info-card-system'];
+            if (system) system.startTutorial();
+          }
+        }, 500);
+      });
+
+      // Listener quando si entra effettivamente in modalità VR immersiva
+      sceneEl.addEventListener('enter-vr', () => {
+        setTimeout(() => {
+          const system = sceneEl.systems['info-card-system'];
+          if (system) system.startTutorial();
+        }, 1200); // Ritardo per dare stabilità visiva all'utente appena entrato in VR
+      });
+    });
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+    body {
+      font-family: 'Outfit', sans-serif;
+    }
+
+    /* Welcome Startup Overlay */
+    .start-overlay-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 99999;
+      background: radial-gradient(circle at center, rgba(15, 15, 25, 0.93) 0%, rgba(8, 8, 12, 0.98) 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      backdrop-filter: blur(20px);
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.5s ease;
+    }
+
+    .start-overlay-container.fade-out {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .start-overlay-card {
+      width: 90%;
+      max-width: 600px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 28px;
+      padding: 48px 40px;
+      text-align: center;
+      box-shadow: 0 40px 80px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform: translateY(0);
+      transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .start-overlay-container.fade-out .start-overlay-card {
+      transform: translateY(-20px);
+    }
+
+    .start-title {
+      font-size: 32px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin: 0 0 12px 0;
+      background: linear-gradient(135deg, #4cc9f0 0%, #7209b7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .start-subtitle {
+      font-size: 15px;
+      color: #9090a8;
+      margin: 0 0 36px 0;
+      font-weight: 300;
+      line-height: 1.6;
+      letter-spacing: 0.5px;
+    }
+
+    /* Buttons Style */
+    .start-actions {
+      display: flex;
+      gap: 20px;
+      width: 100%;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn {
+      font-family: 'Outfit', sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      padding: 18px 36px;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      letter-spacing: 0.5px;
+      width: 100%;
+      max-width: 250px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #7209b7 0%, #f72585 100%);
+      color: #ffffff;
+      box-shadow: 0 12px 30px rgba(247, 37, 133, 0.25);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 18px 36px rgba(247, 37, 133, 0.4);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-3px);
+    }
+
+    /* Restyled instructions HUD at the bottom */
+    .instructions {
+      position: absolute;
+      bottom: 25px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(10, 10, 15, 0.82);
+      color: #e0e0ea;
+      padding: 16px 28px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-family: 'Outfit', sans-serif;
+      font-size: 13px;
+      pointer-events: none;
+      z-index: 1000;
+      text-align: center;
+      line-height: 1.7;
+      backdrop-filter: blur(15px);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Minimal styled default VR enter/exit button */
+    .a-enter-vr-button {
+      background: rgba(15, 15, 25, 0.85) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      border-radius: 12px !important;
+      backdrop-filter: blur(10px) !important;
+      transition: all 0.3s ease !important;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    .a-enter-vr-button:hover {
+      background: rgba(114, 9, 183, 0.9) !important;
+      border-color: rgba(255, 255, 255, 0.2) !important;
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Startup Overlay Screen -->
+  <div id="start-overlay" class="start-overlay-container">
+    <div class="start-overlay-card">
+      <h1 class="start-title">SICUREZZA E FORMAZIONE VR</h1>
+      <p class="start-subtitle">Benvenuto nel portale di formazione immersiva per la sicurezza sul lavoro.</p>
+      
+      <div class="start-actions">
+        <button id="enter-vr-btn" class="btn btn-primary">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" style="vertical-align: middle; margin-right: 8px;"><path d="M21 4H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-9.5 12c-1.38 0-2.5-1.12-2.5-2.5S10.12 11 11.5 11s2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5zm7 0c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+          Visualizza in VR
+        </button>
+        <button id="explore-3d-btn" class="btn btn-secondary">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 8px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          Accedi da Desktop
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <a-scene environment="preset: default; groundColor: #445; grid: cross" cursor="rayOrigin: mouse">
+    
+    <a-assets>
+      <a-asset-item id="glb-mano" src="assets/mano_virtuale.glb"></a-asset-item>
+      <a-asset-item id="glb-macchinario" src="assets/macchinario.glb"></a-asset-item>
+    </a-assets>
+
+    <a-entity id="rig" position="0 0 0">
+      <a-camera id="camera" position="0 1.6 0"></a-camera>
+
+      <a-entity id="leftHand" laser-controls="hand: left" raycaster="objects: .interattivo; far: 10; showLine: true; lineColor: #ffffff; lineOpacity: 0.8" line="color: #ffffff; opacity: 0.8" blink-controls="cameraRig: #rig; teleportOrigin: #camera; collisionEntities: .navigabile; button: trigger; curveTint: #ffffff; curveOpacity: 0.8; curveStyle: straight; rotateOnTeleport: false" sync-teleport-laser controller-input>
+        <a-entity gltf-model="#glb-mano" fix-rotazione-mani="rotazione: 90 180 0"></a-entity>
+      </a-entity>
+
+      <a-entity id="rightHand" laser-controls="hand: right" raycaster="objects: .interattivo; far: 10; showLine: true; lineColor: #ffffff; lineOpacity: 0.8" line="color: #ffffff; opacity: 0.8" blink-controls="cameraRig: #rig; teleportOrigin: #camera; collisionEntities: .navigabile; button: trigger; curveTint: #ffffff; curveOpacity: 0.8; curveStyle: straight; rotateOnTeleport: false" sync-teleport-laser controller-input>
+        <a-entity gltf-model="#glb-mano" fix-rotazione-mani="rotazione: 90 0 0"></a-entity>
+      </a-entity>
+    </a-entity>
+
+    <a-plane class="navigabile" rotation="-90 0 0" width="30" height="30" material="opacity: 0; transparent: true"></a-plane>
+
+    <a-box id="box-sicurezza" position="-2 1.2 -3" color="#4cc9f0" class="interattivo" outline="color: #ffffff; scale: 1.08; pulse: false;" info-card-trigger="title: Box Sicurezza; description: Questo box rappresenta un modulo di sicurezza base. Contiene informazioni essenziali per la protezione sul lavoro e le normative vigenti ambientali."></a-box>
+
+    <a-entity 
+      id="macchinario-sicurezza"
+      gltf-model="#glb-macchinario"
+      position="1 0 -5" 
+      rotation="0 -90 0"
+      scale="0.07 0.07 0.07"
+      class="interattivo" 
+      outline="color: #ffffff; scale: 1.08; pulse: false; submesh: Tasto_cliccabile;"
+      info-card-trigger="title: Pulsante Macchinario; description: Hai attivato con successo il tasto cliccabile del macchinario industriale. Questa procedura simula la messa in sicurezza dell'impianto in ambiente VR.; submesh: Tasto_cliccabile;">
+    </a-entity>
+
+    <a-cone id="cone-sicurezza" position="2 1.2 -3" color="#7209b7" class="interattivo" outline="color: #ffffff; scale: 1.08; pulse: false;" info-card-trigger="title: Cono Segnaletico; description: Rappresenta un punto di interesse per la segnaletica di sicurezza. Importante per la prevenzione di incidenti e la corretta delimitazione delle zone di pericolo."></a-cone>
+
+  </a-scene>
+
+  <div class="instructions">
+    🖐️ Entrambe le mani: Trigger per Teletrasporto<br>
+    📄 Tasto X (sinistra) o A (destra) / Click Mouse: APRI scheda<br>
+    ✕ Tasto X (sinistra) o A (destra) / Puntamento pulsante rosso: CHIUDI scheda<br>
+    🔒 Durante la lettura il teletrasporto viene temporaneamente bloccato
+  </div>
+
+</body>
+</html>
