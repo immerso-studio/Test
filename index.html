@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Puntatore VR Bianca e Dinamica - Training Sicurezza</title>
+    <title>Addestramento Sicurezza VR Industriale - Prototipo Completo</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         #vr-instructions {
             position: absolute; top: 10px; width: 100%; text-align: center; 
-            color: white; pointer-events: none; z-index: 10;
-            background: rgba(0,0,0,0.5); padding: 5px 0;
+            color: rgba(255,255,255,0.7); pointer-events: none; z-index: 10;
+            font-size: 14px; letter-spacing: 1px;
         }
     </style>
     <script type="importmap">
@@ -22,23 +22,50 @@
     </script>
 </head>
 <body>
-    <div id="vr-instructions">
-        Puntatore bianco sempre attivo. Tieni premuto il Trigger sul pavimento per il Teletrasporto. <br>
-        Punta un oggetto e premi "A" (Destro) o "X" (Sinistro) per aprire/chiudere la scheda.
-    </div>
+    <div id="vr-instructions">TRAINING INDUSTRIALE VR — ACCEDI DA VISORE</div>
 
     <script type="module">
         import * as THREE from 'three';
         import { VRButton } from 'three/addons/webxr/VRButton.js';
         import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
-        // --- SETUP SCENA E RENDERER ---
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x333333);
-        scene.fog = new THREE.FogExp2(0x333333, 0.05);
+        // -----------------------------------------------------------------
+        // CONFIGURAZIONE DATI E STATI
+        // -----------------------------------------------------------------
+        let isTutorialActive = true;
+        let currentSlideIndex = 0;
+        let isInfoPanelOpen = false;
+        let currentHoverObject = null;
+        let isTeleportMode = false;
+        let activeTeleportController = null;
+        let teleportPoint = new THREE.Vector3();
 
+        // Stati dei pulsanti per impedire letture multiple (debounce)
+        const prevButtonsState = { left: false, right: false };
+
+        const tutorialData = [
+            { title: "IL PUNTATORE VR", desc: "Usa il raggio bianco continuo per indicare oggetti interattivi o la destinazione del teletrasporto.", img: 'assets/tutorial/1.webp' },
+            { title: "SELEZIONARE OGGETTI", desc: "Punta un DPI e premi 'A' (Destro) o 'X' (Sinistro) per aprire la scheda informativa.", img: 'assets/tutorial/2.webp' },
+            { title: "TELETRASPORTO", desc: "Punta il pavimento, tieni premuto il Trigger, mira al cerchio verde e rilascia per muoverti.", img: 'assets/tutorial/3.webp' }
+        ];
+
+        // Dati PPE (Dispositivi di Protezione Individuale)
+        const ppeData = [
+            { title: "Caschetto di Sicurezza", desc: "Protegge dagli urti accidentali e dalla caduta dall'alto di materiali.", color: 0xe5a93c },
+            { title: "Imbragatura Anticaduta", desc: "Dispositivo salvavita obbligatorio per lavori operativi oltre i 2 metri d'altezza.", color: 0xd9531e },
+            { title: "Calzature Tecniche", desc: "Puntale rinforzato in acciaio contro schiacciamenti accidentali accidentali.", color: 0x252525 }
+        ];
+
+        // -----------------------------------------------------------------
+        // 1. SETUP AMBIENTE E CAMERA RIG (Necessario per Teletrasporto)
+        // -----------------------------------------------------------------
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+        scene.fog = new THREE.FogExp2(0x1a1a1a, 0.06);
+
+        // Rig fondamentale: sposteremo questo per simulare il movimento
         const cameraRig = new THREE.Group();
-        cameraRig.position.set(0, 0, 2);
+        cameraRig.position.set(0, 0, 2); // Utente spawna a Z=2
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
         cameraRig.add(camera);
         scene.add(cameraRig);
@@ -50,289 +77,378 @@
         document.body.appendChild(renderer.domElement);
         document.body.appendChild(VRButton.createButton(renderer));
 
-        scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.5));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 2);
-        dirLight.position.set(5, 12, 5);
+        // Luci
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 1.2));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(3, 10, 3);
         scene.add(dirLight);
 
-        // --- AMBIENTE E OGGETTI ---
-        const floorGeo = new THREE.PlaneGeometry(30, 30);
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0x1f1f1f });
+        // Pavimento minimal e griglia geometrica
+        const floorGeo = new THREE.PlaneGeometry(40, 40);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
         const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
+        floor.name = 'floor'; // Nome utile per Raycaster
         scene.add(floor);
 
-        const grid = new THREE.GridHelper(30, 30, 0x444444, 0x222222);
+        const grid = new THREE.GridHelper(40, 40, 0x333333, 0x222222);
         grid.position.y = 0.001;
         scene.add(grid);
 
-        const tableGeo = new THREE.BoxGeometry(2.2, 0.8, 0.9);
-        const tableMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
-        const table = new THREE.Mesh(tableGeo, tableMat);
+        // Banco da lavoro DPI
+        const table = new THREE.Mesh(
+            new THREE.BoxGeometry(2.2, 0.8, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0x2b2b2b })
+        );
         table.position.set(0, 0.4, -1.5);
         scene.add(table);
 
         const interactables = [];
 
-        // Caschetto
-        const helmetGeo = new THREE.SphereGeometry(0.18, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-        const helmetMat = new THREE.MeshStandardMaterial({ color: 0xffcc00 });
-        const helmet = new THREE.Mesh(helmetGeo, helmetMat);
-        helmet.position.set(-0.6, 0.8, -1.5);
-        helmet.userData = { 
-            title: "CASCHETTO DI SICUREZZA", 
-            info: "Protegge il capo da impatti. Obbligatorio in tutta l'area produttiva." 
-        };
-        scene.add(helmet);
-        interactables.push(helmet);
+        // Geometrie DPI stilizzate
+        const ppeGeometries = [
+            new THREE.SphereGeometry(0.16, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), // Caschetto
+            new THREE.TorusGeometry(0.14, 0.03, 12, 24), // Imbragatura
+            new THREE.BoxGeometry(0.15, 0.09, 0.26) // Scarpe
+        ];
 
-        // Imbragatura
-        const harnessGeo = new THREE.TorusGeometry(0.15, 0.04, 12, 24);
-        const harnessMat = new THREE.MeshStandardMaterial({ color: 0xff5500 });
-        const harness = new THREE.Mesh(harnessGeo, harnessMat);
-        harness.position.set(0, 0.95, -1.5);
-        harness.rotation.x = Math.PI / 2;
-        harness.userData = { 
-            title: "IMBRAGATURA ANTICADUTA", 
-            info: "Necessaria per lavori in quota (oltre 2m). Agganciare i cordini ai punti d'ancoraggio." 
-        };
-        scene.add(harness);
-        interactables.push(harness);
+        // Creazione oggetti DPI da dati
+        const ppePositions = [
+            new THREE.Vector3(-0.6, 0.8, -1.5),
+            new THREE.Vector3(0, 0.92, -1.5),
+            new THREE.Vector3(0.6, 0.85, -1.5)
+        ];
 
-        // Scarpe
-        const shoesGeo = new THREE.BoxGeometry(0.16, 0.1, 0.28);
-        const shoesMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
-        const shoes = new THREE.Mesh(shoesGeo, shoesMat);
-        shoes.position.set(0.6, 0.85, -1.5);
-        shoes.userData = { 
-            title: "SCARPE ANTINFORTUNISTICHE", 
-            info: "Dotate di puntale resistente e suola antiperforazione." 
-        };
-        scene.add(shoes);
-        interactables.push(shoes);
+        ppeData.forEach((data, index) => {
+            const mesh = new THREE.Mesh(ppeGeometries[index], new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.5 }));
+            mesh.position.copy(ppePositions[index]);
+            if (index === 1) mesh.rotation.x = Math.PI / 2; // Ruota imbragatura
+            mesh.userData = { title: data.title, info: data.desc };
+            scene.add(mesh);
+            interactables.push(mesh);
+        });
 
+        // -----------------------------------------------------------------
+        // 2. SETUP UI (Canvas Texture Generiche)
+        // -----------------------------------------------------------------
+        
+        // Helper per formattare il testo con a capo automatico sul canvas
+        function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' ');
+            let line = '';
+            for (let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + ' ';
+                if (ctx.measureText(testLine).width > maxWidth && n > 0) {
+                    ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight;
+                } else { line = testLine; }
+            }
+            ctx.fillText(line, x, y);
+        }
 
-        // --- UI DINAMICA: SCHEDA INFORMATIVA ---
-        const infoGroup = new THREE.Group();
-        infoGroup.visible = false;
-        scene.add(infoGroup);
-
-        const infoCanvas = document.createElement('canvas');
-        infoCanvas.width = 512;
-        infoCanvas.height = 256;
-        const ctx = infoCanvas.getContext('2d');
+        // --- 2.1 SCHEDE INFORMATIVE DPI STILE FROSTED GLASS (POSIZIONATE IN MONDO) ---
+        const infoCanvas = document.createElement('canvas'); infoCanvas.width = 512; infoCanvas.height = 256;
+        const infoCtx = infoCanvas.getContext('2d');
         const infoTexture = new THREE.CanvasTexture(infoCanvas);
         
-        const infoPanelGeo = new THREE.PlaneGeometry(1.0, 0.5);
-        const infoPanelMat = new THREE.MeshBasicMaterial({ map: infoTexture, side: THREE.DoubleSide, transparent: true });
-        const infoPanelMesh = new THREE.Mesh(infoPanelGeo, infoPanelMat);
-        infoGroup.add(infoPanelMesh);
+        const infoPanel = new THREE.Mesh(
+            new THREE.PlaneGeometry(0.9, 0.45),
+            new THREE.MeshBasicMaterial({ map: infoTexture, side: THREE.DoubleSide, transparent: true })
+        );
+        const infoGroup = new THREE.Group(); 
+        infoGroup.add(infoPanel); 
+        infoGroup.visible = false; 
+        scene.add(infoGroup);
 
-        function aggiornaTestoScheda(titolo, descrizione) {
-            ctx.fillStyle = 'rgba(20, 30, 45, 0.95)';
-            ctx.fillRect(0, 0, 512, 256);
-            ctx.strokeStyle = '#ff6600';
-            ctx.lineWidth = 8;
-            ctx.strokeRect(0, 0, 512, 256);
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 28px sans-serif';
-            ctx.fillText(titolo, 30, 50);
-            ctx.fillStyle = '#ff6600';
-            ctx.fillRect(30, 65, 452, 3);
-            ctx.fillStyle = '#dddddd';
-            ctx.font = '20px sans-serif';
+        function disegnaSchedaMinimal(titolo, descrizione) {
+            infoCtx.fillStyle = 'rgba(18, 18, 18, 0.95)'; // Sfondo scuro semitrasparente
+            infoCtx.fillRect(0, 0, 512, 256);
             
-            const parole = descrizione.split(' ');
-            let linea = '';
-            let y = 105;
-            const maxWidth = 452;
-            const lineHeight = 28;
-            for (let n = 0; n < parole.length; n++) {
-                let testLinea = linea + parole[n] + ' ';
-                if (ctx.measureText(testLinea).width > maxWidth && n > 0) {
-                    ctx.fillText(linea, 30, y);
-                    linea = parole[n] + ' ';
-                    y += lineHeight;
-                } else { linea = testLinea; }
-            }
-            ctx.fillText(linea, 30, y);
-            ctx.fillStyle = '#888888';
-            ctx.font = 'italic 16px sans-serif';
-            ctx.fillText("Premi di nuovo A/X per chiudere", 30, 230);
+            infoCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)'; // Bordo sottile bianca
+            infoCtx.lineWidth = 2;
+            infoCtx.strokeRect(0, 0, 512, 256);
+
+            infoCtx.fillStyle = '#ffffff'; // Titolo bianco discreto ed elegante
+            infoCtx.font = '500 24px sans-serif';
+            infoCtx.fillText(titolo.toUpperCase(), 40, 60);
+
+            infoCtx.fillStyle = '#aaaaaa'; // Grigio chiaro per descrizione, ottima leggibilità
+            infoCtx.font = '300 17px sans-serif';
+            wrapText(infoCtx, descrizione, 40, 110, 432, 26);
+
+            infoCtx.fillStyle = '#555555'; // Footer d'azione piccolissimo
+            infoCtx.font = 'bold 12px sans-serif';
+            infoCtx.fillText("PREMI A / X PER CHIUDERE", 40, 225);
+
             infoTexture.needsUpdate = true;
         }
 
+        // --- 2.2 SCHEDE TUTORIAL (HUD - FISSE RISPETTO ALLA VISUALE CAMERA) ---
+        
+        // Aumentiamo la risoluzione del canvas tutorial per nitidezza (pannello 1.0x1.0m)
+        const tutCanvas = document.createElement('canvas'); tutCanvas.width = 1024; tutCanvas.height = 1024;
+        const tutCtx = tutCanvas.getContext('2d');
+        const tutTexture = new THREE.CanvasTexture(tutCanvas);
+        
+        const tutPanel = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.0, 1.0), // Pannello quadrato
+            new THREE.MeshBasicMaterial({ map: tutTexture, transparent: true, side: THREE.DoubleSide })
+        );
+        const tutorialGroup = new THREE.Group(); 
+        tutorialGroup.add(tutPanel);
+        // IMPORTANTE: Posiziona l'HUD esattamente davanti e centrato rispetto alla CAMERA
+        tutorialGroup.position.set(0, 0, -1.2); 
+        
+        // AGGIUNGI L'HUD ALLA CAMERA, non alla scena!
+        camera.add(tutorialGroup);
 
-        // --- TELETRASPORTO VISUALE ---
-        const markerGeo = new THREE.RingGeometry(0.25, 0.3, 32);
-        markerGeo.rotateX(-Math.PI / 2);
-        const markerMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, side: THREE.DoubleSide });
-        const teleportMarker = new THREE.Mesh(markerGeo, markerMat);
+        function disegnaSchedaTutorialOrdinata(data, slideIndex) {
+            // Sfondo scuro pulito minimal e trasparente (Frosted glass)
+            tutCtx.fillStyle = 'rgba(15, 15, 15, 0.95)';
+            tutCtx.fillRect(0, 0, 1024, 1024);
+            
+            // Sottile bordo minimale
+            tutCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            tutCtx.lineWidth = 4;
+            tutCtx.strokeRect(20, 20, 984, 984);
+
+            const margin = 80;
+            let currentY = margin + 60;
+
+            // 1. Titolo (Grande, centrato, in alto)
+            tutCtx.fillStyle = '#ffffff';
+            tutCtx.font = '500 56px sans-serif'; // Font pulito
+            tutCtx.textAlign = 'center';
+            tutCtx.fillText(data.title.toUpperCase(), 512, currentY);
+            currentY += 100;
+
+            // 2. Immagine (Carica dinamicamente, mantieni aspect ratio, adattata al container)
+            const imgAsset = new Image();
+            imgAsset.src = data.img;
+            imgAsset.onload = function() {
+                // Calcola l'aspect ratio per l'adattamento
+                const imgW = imgAsset.width;
+                const imgH = imgAsset.height;
+                const aspect = imgW / imgH;
+                
+                const targetW = 864; // Larghezza massima dell'immagine (1024 - 2*margin)
+                const targetH = targetW / aspect; // Altezza adattata
+
+                // Disegna l'immagine centrata
+                tutCtx.drawImage(imgAsset, 512 - (targetW / 2), currentY, targetW, targetH);
+                currentY += targetH + 80;
+
+                // 3. Testo Descrittivo (Sotto l'immagine, formattato, minimal)
+                tutCtx.fillStyle = '#aaaaaa'; // Grigio chiaro per non affaticare la vista
+                tutCtx.font = '300 36px sans-serif';
+                tutCtx.textAlign = 'center';
+                tutCtx.textBaseline = 'top';
+                
+                wrapText(tutCtx, data.desc, 512, currentY, targetW, 48);
+
+                // 4. Guida di Navigazione (In basso, in orange accent)
+                tutCtx.fillStyle = '#ff6600'; // Arancione di accento d'azione
+                tutCtx.font = 'bold 28px sans-serif';
+                tutCtx.textBaseline = 'bottom';
+                const testoNavigazione = (slideIndex === 2) ? "PREMI A O X PER INIZIARE" : `PREMI A O X PER AVANZARE (${slideIndex + 1}/3)`;
+                tutCtx.fillText(testoNavigazione, 512, 940); // Posizione fissa in basso
+
+                tutTexture.needsUpdate = true; // Aggiorna la texture nel mondo VR
+            };
+        }
+
+        // Funzione per la navigazione a carosello (Tasti A / X)
+        function avanzaTutorial() {
+            if (isTutorialActive) {
+                currentSlideIndex++;
+                if (currentSlideIndex < 3) {
+                    disegnaSchedaTutorialOrdinata(tutorialData[currentSlideIndex], currentSlideIndex);
+                } else {
+                    // Fine del tutorial: nascondi l'HUD fissa e sblocca l'esperienza
+                    tutorialGroup.visible = false;
+                    isTutorialActive = false;
+                    
+                    // Mostra messaggio di aiuto in alto liberando il puntatore
+                    document.getElementById('vr-instructions').textContent = "Punta un DPI e premi A/X per info. Trigger sul pavimento per teletrasporto.";
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 3. PUNTATORE LASER BIANCO E TELETRASPORTO VISUALE (MARKER)
+        // -----------------------------------------------------------------
+        
+        // Cerchio Verde Teletrasporto (Marker sul pavimento)
+        const teleportMarker = new THREE.Mesh(
+            new THREE.RingGeometry(0.22, 0.25, 32).rotateX(-Math.PI / 2),
+            new THREE.MeshBasicMaterial({ color: 0x00ffcc, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })
+        );
         teleportMarker.visible = false;
         scene.add(teleportMarker);
 
-
-        // --- CONTROLLER VR E PUNTATORE BIANCO SEMPRE ATTIVO ---
+        // Setup Controller VR
         const controller1 = renderer.xr.getController(0);
         const controller2 = renderer.xr.getController(1);
         cameraRig.add(controller1);
         cameraRig.add(controller2);
 
+        // Modelli estetici fisici dei controller
         const controllerModelFactory = new XRControllerModelFactory();
-        const grip1 = renderer.xr.getControllerGrip(0);
-        grip1.add(controllerModelFactory.createControllerModel(grip1));
-        cameraRig.add(grip1);
-        const grip2 = renderer.xr.getControllerGrip(1);
-        grip2.add(controllerModelFactory.createControllerModel(grip2));
-        cameraRig.add(grip2);
+        const grip1 = renderer.xr.getControllerGrip(0); grip1.add(controllerModelFactory.createControllerModel(grip1)); cameraRig.add(grip1);
+        const grip2 = renderer.xr.getControllerGrip(1); grip2.add(controllerModelFactory.createControllerModel(grip2)); cameraRig.add(grip2);
 
-        // Geometria laser: da 0 a -1, la allungheremo via codice
+        // Laser Bianco Continuo RichiestO (Raggio puntatore sempre visibile)
         const laserGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), new THREE.Vector3(0,0,-1)]);
+        const laserMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
         
-        // MODIFICA QUI: Materiale ora BIANCO e di default VISIBILE
-        const laserMat = new THREE.LineBasicMaterial({ color: 0xffffff }); 
+        const line1 = new THREE.Line(laserGeo, laserMat); line1.name = 'line'; line1.scale.z = 10; controller1.add(line1);
+        const line2 = new THREE.Line(laserGeo, laserMat.clone()); line2.name = 'line'; line2.scale.z = 10; controller2.add(line2);
+
+
+        // -----------------------------------------------------------------
+        // 4. GESTIONE INPUT (TRIGGER -> TELETRASPORTO)
+        // -----------------------------------------------------------------
         
-        const line1 = new THREE.Line(laserGeo, laserMat); 
-        line1.name = 'line'; // Nome utile per trovarla
-        line1.scale.z = 10;   // Lunghezza massima di default
-        line1.visible = true; // SEMPRE VISIBILE ORA
-        controller1.add(line1);
-
-        const line2 = new THREE.Line(laserGeo, laserMat.clone()); // Clona materiale per indipendenza se serve
-        line2.name = 'line';
-        line2.scale.z = 10;
-        line2.visible = true;
-        controller2.add(line2);
-
-
-        // --- LOGICA GESTIONE TELETRASPORTO (TRIGGER) ---
-        let isTeleportMode = false;
-        let activeTeleportController = null;
-        let teleportPoint = new THREE.Vector3();
-
+        // Trigger Premuto (Prenotazione)
         function onTriggerStart(event) {
+            // Il teletrasporto funziona solo dopo la fine del tutorial
+            if (isTutorialActive) return; 
+            activeTeleportController = event.target; 
             isTeleportMode = true;
-            activeTeleportController = event.target;
-            // Non spegniamo/accendiamo la linea, è sempre attiva.
         }
 
+        // Trigger Rilasciato (Esecuzione movimento)
         function onTriggerEnd(event) {
-            if (isTeleportMode && teleportMarker.visible && activeTeleportController === event.target) {
+            if (!isTutorialActive && isTeleportMode && teleportMarker.visible && activeTeleportController === event.target) {
+                // Sposta il CameraRig alle coordinate puntate mantenendo l'altezza fissa della testa
                 cameraRig.position.set(teleportPoint.x, cameraRig.position.y, teleportPoint.z);
             }
-            isTeleportMode = false;
-            teleportMarker.visible = false;
-            activeTeleportController = null;
+            isTeleportMode = false; teleportMarker.visible = false; activeTeleportController = null;
         }
 
-        controller1.addEventListener('selectstart', onTriggerStart);
-        controller1.addEventListener('selectend', onTriggerEnd);
-        controller2.addEventListener('selectstart', onTriggerStart);
-        controller2.addEventListener('selectend', onTriggerEnd);
+        controller1.addEventListener('selectstart', onTriggerStart); controller1.addEventListener('selectend', onTriggerEnd);
+        controller2.addEventListener('selectstart', onTriggerStart); controller2.addEventListener('selectend', onTriggerEnd);
 
 
-        // --- LOOP ANIMAZIONE PRINCIPALE (PUNTATORE DINAMICO, HOVER, TASTI A/X) ---
+        // -----------------------------------------------------------------
+        // 5. LOOP ANIMAZIONE PRINCIPALE & LOGICA DEI FRAME (HOVER, TASTI A/X)
+        // -----------------------------------------------------------------
         const raycaster = new THREE.Raycaster();
         const workingMatrix = new THREE.Matrix4();
-        const DEFAULT_LASER_LENGTH = 10;
+        const MAX_LASER_RANGE = 10;
         
-        const prevButtonsState = { left: false, right: false };
-        let currentHoverObject = null;
-        let isInfoPanelOpen = false;
-
         renderer.setAnimationLoop(() => {
             const session = renderer.xr.getSession();
             
-            // Resetta Hover
-            if (currentHoverObject) {
-                currentHoverObject.material.emissive.setHex(0x000000);
-                currentHoverObject = null;
-            }
+            // Resetta Hover dell'oggetto DPI precedente
+            if (currentHoverObject) { currentHoverObject.material.emissive.setHex(0x000000); currentHoverObject = null; }
 
             if (session) {
+                // Iterazione sui controller disponibili passati dall'hardware (destro/sinistro)
                 for (const source of session.inputSources) {
                     const controller = source.handedness === 'right' ? controller1 : controller2;
-                    const line = controller.getObjectByName('line'); // Trova la linea del controller
+                    const line = controller.getObjectByName('line');
+                    line.scale.z = MAX_LASER_RANGE; // Reset lunghezza di partenza del raggio bianco
 
-                    // Resetta lunghezza laser di default all'inizio di ogni frame
-                    line.scale.z = DEFAULT_LASER_LENGTH;
-
+                    // Calcolo della direzione spaziale del puntamento laser
                     workingMatrix.identity().extractRotation(controller.matrixWorld);
                     raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
                     raycaster.ray.direction.set(0, 0, -1).applyMatrix4(workingMatrix);
 
-                    // --- LOGICA PUNTATORE DINAMICO (Novità) ---
-                    // Controlla interazioni generali (tutto ciò che è interattivo e il pavimento)
-                    let closestDistance = DEFAULT_LASER_LENGTH;
+                    let currentRayLength = MAX_LASER_RANGE;
 
-                    // 1. Controlla oggetti
-                    const objIntersects = raycaster.intersectObjects(interactables);
-                    if (objIntersects.length > 0) {
-                        currentHoverObject = objIntersects[0].object;
-                        // Imposta la lunghezza del laser alla distanza dell'oggetto
-                        closestDistance = objIntersects[0].distance;
+                    // --- 5.1 LOGICA PUNTATORE DINAMICO ---
+                    
+                    // Controlla interazioni selettive (evita hover durante teletrasporto o tutorial attivo)
+                    if (!isTutorialActive) {
                         
-                        // Solo se NON stiamo teletrasportandoci, mostriamo l'hover
-                        if (!isTeleportMode) {
-                            currentHoverObject.material.emissive.setHex(0x333333);
-                        }
-                    }
-
-                    // 2. Controlla pavimento (prioritario se in modalità Teletrasporto)
-                    const floorIntersects = raycaster.intersectObject(floor);
-                    if (floorIntersects.length > 0) {
-                        const floorDistance = floorIntersects[0].distance;
-                        
-                        if (isTeleportMode && controller === activeTeleportController) {
-                            // Se in teletrasporto, il laser si ferma sul pavimento e aggiorna la distanza
-                            closestDistance = floorDistance;
-                            teleportPoint.copy(floorIntersects[0].point);
-                            teleportMarker.position.copy(teleportPoint);
-                            teleportMarker.position.y = 0.01;
-                            teleportMarker.visible = true;
-                        } else if (!objIntersects.length) {
-                            // Se non c'è teletrasporto attivo e non stiamo puntando un oggetto,
-                            // ma stiamo puntando il pavimento, la linea si accorcia fino a terra.
-                            closestDistance = floorDistance;
-                        }
-                    } else if (isTeleportMode && controller === activeTeleportController) {
-                        teleportMarker.visible = false;
-                    }
-
-                    // AGGIORNA LA LUNGHEZZA FISICA DELLA LINEA
-                    line.scale.z = closestDistance;
-
-
-                    // --- LETTURA PULSANTI "A" E "X" ---
-                    if (source.gamepad) {
-                        const buttonPressed = source.gamepad.buttons[4]?.pressed || false;
-                        const hand = source.handedness;
-                        if (buttonPressed && !prevButtonsState[hand]) {
-                            if (isInfoPanelOpen) {
-                                infoGroup.visible = false;
-                                isInfoPanelOpen = false;
-                            } else if (currentHoverObject) {
-                                const data = currentHoverObject.userData;
-                                aggiornaTestoScheda(data.title, data.info);
-                                infoGroup.position.copy(currentHoverObject.position);
-                                infoGroup.position.y += 0.5;
-                                infoGroup.lookAt(cameraRig.position.x, infoGroup.position.y, cameraRig.position.z);
-                                infoGroup.visible = true;
-                                isInfoPanelOpen = true;
+                        // A. Hover sugli oggetti DPI (Selezionabili)
+                        const objIntersects = raycaster.intersectObjects(interactables);
+                        if (objIntersects.length > 0) {
+                            currentHoverObject = objIntersects[0].object;
+                            currentRayLength = objIntersects[0].distance; // Accorcia il raggio fino all'oggetto
+                            if (!isTeleportMode) {
+                                // Feedback visivo Hover minimal: luce soffusa emissiva
+                                currentHoverObject.material.emissive.setHex(0x222222); 
                             }
                         }
+
+                        // B. Calcolo punto sul pavimento (Puntatore adatta lunghezza e mostra Teleport Marker)
+                        const floorIntersects = raycaster.intersectObject(floor);
+                        if (floorIntersects.length > 0) {
+                            const floorDist = floorIntersects[0].distance;
+                            
+                            // Se Trigger premuto sul controller attivo, mostra marker verde
+                            if (isTeleportMode && controller === activeTeleportController) {
+                                currentRayLength = floorDist; // Ferma il raggio sul pavimento
+                                teleportPoint.copy(floorIntersects[0].point);
+                                teleportMarker.position.copy(teleportPoint);
+                                teleportMarker.position.y = 0.005; // Evita flickering sul terreno
+                                teleportMarker.visible = true;
+                            } else if (!objIntersects.length) {
+                                // Se punta a terra liberamente (non seleziona oggetti), il raggio bianco si ferma sul pavimento
+                                currentRayLength = floorDist;
+                            }
+                        } else if (isTeleportMode && controller === activeController) {
+                            // Se il trigger è premuto ma non mira al pavimento, nascondi marker verde
+                            teleportMarker.visible = false;
+                        }
+                    }
+
+                    // Imposta la lunghezza dinamica finale del raggio bianco continuo richiestO
+                    line.scale.z = currentRayLength;
+
+
+                    // --- 5.2 GESTIONE DEI PULSANTI FISICI A / X (Gamepad API) ---
+                    if (source.gamepad) {
+                        // Nello standard WebXR ("xr-standard"), il pulsante d'azione inferiore (A / X) è indicizzato alla posizione 4
+                        const buttonPressed = source.gamepad.buttons[4]?.pressed || false; 
+                        const hand = source.handedness;
+
+                        // Controlla il click esatto in questo frame (fronte di salita)
+                        if (buttonPressed && !prevButtonsState[hand]) {
+                            
+                            if (isTutorialActive) {
+                                // --- AZIONE A/X DURANTE TUTORIAL: Avanza Carosello ---
+                                avanzaTutorial();
+                            } else {
+                                // --- AZIONE A/X DURANTE ADDESTRAMENTO OPERATIVO: Info Schede DPI ---
+                                if (isInfoPanelOpen) {
+                                    // Qualsiasi click A/X chiude il pannello info minimal
+                                    infoGroup.visible = false;
+                                    isInfoPanelOpen = false;
+                                } else if (currentHoverObject) {
+                                    // Se sto puntando un DPI valido, apro e popolo la InfoCard minimal frosted glass
+                                    const data = currentHoverObject.userData;
+                                    disegnaSchedaMinimal(data.title, data.info);
+                                    
+                                    // Posizionamento intelligiente sopra l'oggetto e rotazione verso l'utente (camera rig)
+                                    infoGroup.position.copy(currentHoverObject.position);
+                                    infoGroup.position.y += 0.45; // Alzalo sopra l'oggetto
+                                    infoGroup.lookAt(cameraRig.position.x, infoGroup.position.y, cameraRig.position.z);
+                                    
+                                    infoGroup.visible = true;
+                                    isInfoPanelOpen = true;
+                                }
+                            }
+                        }
+                        // Salva lo stato corrente del pulsante per il prossimo frame (debounce)
                         prevButtonsState[hand] = buttonPressed;
                     }
                 }
             }
+            // Rendering finale della scena nel visore WebXR
             renderer.render(scene, camera);
         });
 
+        // Gestione ridimensionamento finestra (utilie solo per la visualizzazione debug su desktop)
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
+
+        // Avvia il tutorial fissa con la prima schedaordinata all'avvio
+        disegnaSchedaTutorialOrdinata(tutorialData[0], 0);
 
     </script>
 </body>
