@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Training VR Industriale - Tutorial d'Accesso Corretto</title>
+    <title>Training VR Industriale - Layout Corretto</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     </style>
@@ -123,13 +123,13 @@
             tutCtx.fillStyle = '#ffffff'; tutCtx.font = 'bold 24px sans-serif'; tutCtx.textAlign = 'center';
             tutCtx.fillText(slide.title, 256, 55);
 
-            // CORREZIONE: Rendering Immagine Tutorial mantenendola perfettamente QUADRATA (1:1)
+            // Rendering Immagine Tutorial mantenendola perfettamente QUADRATA (1:1)
             if (slide.imgObj) {
                 const imgSize = 180; 
                 tutCtx.drawImage(slide.imgObj, 256 - imgSize / 2, 95, imgSize, imgSize);
             }
 
-            // Testo Istruzioni riposizionato leggermente più in basso per fare spazio al quadrato
+            // Testo Istruzioni
             tutCtx.fillStyle = '#cccccc'; tutCtx.font = '16px sans-serif'; tutCtx.textAlign = 'center';
             wrapTextCentrato(tutCtx, slide.text, 256, 315, 420, 24);
 
@@ -138,7 +138,7 @@
             tutCtx.fillRect(102, 435, 308, 51);
 
             tutCtx.fillStyle = '#ffffff'; tutCtx.font = 'bold 18px sans-serif';
-            tutCtx.fillText(tutorialIndex === tutorialSlides.length - 1 ? "INIZIA TRAINING" : "PROSEGUI", 256, 467);
+            tutCtx.fillText(tutorialIndex === tutorialSlides.length - 1 ? "INIZIA TRAINING" : "PROSEGUI (A / X)", 256, 467);
 
             tutorialTexture.needsUpdate = true;
         }
@@ -211,7 +211,10 @@
                 objCtx.strokeStyle = 'rgba(0, 210, 255, 0.5)'; objCtx.lineWidth = 6; objCtx.strokeRect(0, 0, 512, 320);
                 objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 22px sans-serif'; objCtx.fillText("OBIETTIVO: ISPEZIONE DPI", 40, 60);
                 objCtx.fillStyle = '#cccccc'; objCtx.font = '16px sans-serif';
-                wrapTextCentrato(objCtx, "Seleziona ed apri la scheda informativa di tutti e tre i dispositivi di protezione presenti sul tavolo per verificarne la conformità tecnica prima di iniziare i lavori.", 256, 110, 432, 26);
+                
+                // CORREZIONE: Coordinata X impostata a 40 per allinearsi perfettamente a sinistra con Titolo e Footer
+                wrapTextCentrato(objCtx, "Seleziona ed apri la scheda informativa di tutti e tre i dispositivi di protezione presenti sul tavolo per verificarne la conformità tecnica prima di iniziare i lavori.", 40, 110, 432, 26);
+                
                 objCtx.fillStyle = '#ffffff'; objCtx.font = 'bold 18px sans-serif'; objCtx.fillText(`DPI Ispezionati: ${inspectedObjects.size} / ${totalObjectsToInspect}`, 40, 260);
             }
             objTexture.needsUpdate = true;
@@ -226,7 +229,7 @@
         const ppeDati = [
             { id: "casco", url: 'assets/safety/casco.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5), title: "Casco di Sicurezza", info: "Protegge il capo da urti accidentali e dalla caduta dall'alto di materiali. Ispeziona regolarmente per crepe." },
             { id: "imbragatura", url: 'assets/safety/imbragatura.glb', pos: new THREE.Vector3(0, 0.92, -1.5), title: "Imbragatura Anticaduta", info: "Dispositivo salvavita obbligatorio per lavori operativi oltre i 2 metri d'altezza. Controlla i punti di aggancio." },
-            { id: "scarpe", url: 'assets/safety/scarpe.glb', pos: new THREE.Vector3(0.6, 0.85, -1.5), title: "Scarpe Tecniche", info: "Puntale rinforzato in acciaio contro schiacciamenti accidentali e suola antiscivolo. Obbligatorie in cantiere." }
+            { id: "scarpe", url: 'assets/safety/scarpe.glb', pos: new THREE.Vector3(0.6, 0.85, -1.5), title: "Scarpe Tecniche", info: "Puntale rinforzato in acciaio contro schiazziamenti accidentali e suola antiscivolo. Obbligatorie in cantiere." }
         ];
 
         const infoCanvas = document.createElement('canvas'); infoCanvas.width = 400; infoCanvas.height = 300;
@@ -295,7 +298,6 @@
 
         let isTeleportMode = false; let activeTeleportController = null; let teleportPoint = new THREE.Vector3();
 
-        // CORREZIONE: Durante il tutorial il Trigger posteriore non fa assolutamente nulla (Impedisce spostamenti indesiderati)
         function onTriggerStart(event) { 
             if (isTutorialActive) return; 
             activeTeleportController = event.target; isTeleportMode = true; 
@@ -396,12 +398,11 @@
                         line.scale.z = currentRayLength; 
                     }
 
-                    // --- LOGICA INPUT UNIFICATA TASTI (A / X) ---
+                    // Logica Input Tasti (A / X)
                     if (source.gamepad) {
                         const buttonPressed = source.gamepad.buttons[4]?.pressed || false; const hand = source.handedness;
                         if (buttonPressed && !prevButtonsState[hand]) {
                             
-                            // CORREZIONE CRUCCIALE: Avanzamento del tutorial tramite tasti A / X
                             if (isTutorialActive) {
                                 if (isHoveringButton) {
                                     tutorialIndex++;
@@ -410,11 +411,10 @@
                                     } else {
                                         isTutorialActive = false;
                                         tutorialGroup.visible = false;
-                                        locationPointerGroup.visible = true; // Sblocca l'esperienza
+                                        locationPointerGroup.visible = true; 
                                     }
                                 }
                             } else {
-                                // Logica d'ispezione standard dei DPI ad addestramento iniziato
                                 if (currentHoverObject) {
                                     const data = currentHoverObject.userData;
                                     if (isInfoPanelOpen) {
