@@ -265,6 +265,14 @@
         this.cardData = null;
         this.isCardOpen = false;
         this.tutorialStep = 0; // 0 = chiuso, 1, 2, 3 = passi del tutorial
+
+        // Pre-carica le immagini del tutorial
+        this.tutorialImages = [null, null, null];
+        ['assets/tutorial/1.webp', 'assets/tutorial/2.webp', 'assets/tutorial/3.webp'].forEach((src, i) => {
+          const img = new Image();
+          img.src = src;
+          this.tutorialImages[i] = img;
+        });
       },
       wrapText: function (ctx, text, x, y, maxWidth, lineHeight) {
         const words = text.split(' ');
@@ -443,96 +451,50 @@
         ctx.font = '28px sans-serif';
         this.wrapText(ctx, desc, 500, 190, 460, 42);
 
-        // Illustrazione vettoriale sincrona (colonna sinistra)
-        ctx.save();
-        ctx.translate(250, 270);
-        if (step === 1) {
-          // Puntamento
-          ctx.strokeStyle = '#4cc9f0';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(120, -100, 25, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(120, -100, 10, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.fillStyle = 'rgba(76, 201, 240, 0.2)';
-          ctx.fill();
+        // Illustrazione reale (colonna sinistra) — area: x 30..470, y 80..530
+        const img = this.tutorialImages[step - 1];
+        if (img) {
+          const drawInArea = () => {
+            const areaX = 30, areaY = 80, areaW = 430, areaH = 450;
+            const scale = Math.min(areaW / img.naturalWidth, areaH / img.naturalHeight);
+            const drawW = img.naturalWidth * scale;
+            const drawH = img.naturalHeight * scale;
+            const drawX = areaX + (areaW - drawW) / 2;
+            const drawY = areaY + (areaH - drawH) / 2;
 
-          ctx.strokeStyle = '#7209b7';
-          ctx.lineWidth = 4;
-          ctx.setLineDash([8, 8]);
-          ctx.beginPath();
-          ctx.moveTo(-100, 100);
-          ctx.lineTo(120, -100);
-          ctx.stroke();
+            ctx.save();
+            // Clip arrotondato per l'immagine
+            const cr = 14;
+            ctx.beginPath();
+            ctx.moveTo(drawX + cr, drawY);
+            ctx.arcTo(drawX + drawW, drawY, drawX + drawW, drawY + drawH, cr);
+            ctx.arcTo(drawX + drawW, drawY + drawH, drawX, drawY + drawH, cr);
+            ctx.arcTo(drawX, drawY + drawH, drawX, drawY, cr);
+            ctx.arcTo(drawX, drawY, drawX + drawW, drawY, cr);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(img, drawX, drawY, drawW, drawH);
+            ctx.restore();
+          };
 
-          ctx.setLineDash([]);
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 4;
-          ctx.fillStyle = '#15151e';
-          ctx.beginPath();
-          ctx.arc(-80, 80, 20, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        } else if (step === 2) {
-          // Selezione
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 4;
-          ctx.fillStyle = '#15151e';
-          ctx.beginPath();
-          ctx.arc(0, 0, 50, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.fillStyle = '#f72585';
-          ctx.beginPath();
-          ctx.arc(-20, -10, 15, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 18px sans-serif';
-          ctx.fillText('X', -26, -3);
-
-          ctx.fillStyle = '#7209b7';
-          ctx.beginPath();
-          ctx.arc(20, 15, 15, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 18px sans-serif';
-          ctx.fillText('A', 14, 22);
-
-          ctx.strokeStyle = 'rgba(247, 37, 133, 0.5)';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(20, 15, 25, 0, Math.PI * 2);
-          ctx.stroke();
-        } else if (step === 3) {
-          // Teletrasporto
-          ctx.strokeStyle = '#4cc9f0';
-          ctx.lineWidth = 3;
-          ctx.fillStyle = 'rgba(76, 201, 240, 0.2)';
-          ctx.beginPath();
-          ctx.ellipse(80, 80, 60, 25, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.strokeStyle = '#7209b7';
-          ctx.lineWidth = 4;
-          ctx.setLineDash([6, 6]);
-          ctx.beginPath();
-          ctx.moveTo(-100, -60);
-          ctx.quadraticCurveTo(-10, -150, 80, 80);
-          ctx.stroke();
-
-          ctx.setLineDash([]);
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 4;
-          ctx.fillStyle = '#15151e';
-          ctx.beginPath();
-          ctx.arc(-100, -60, 20, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+          if (img.complete && img.naturalWidth > 0) {
+            drawInArea();
+          } else {
+            // L'immagine non e' ancora caricata: attendi e ridisegna
+            img.onload = () => {
+              drawInArea();
+            };
+          }
         }
+
+        // Linea divisoria verticale tra immagine e testo
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(490, 40);
+        ctx.lineTo(490, 536);
+        ctx.stroke();
         ctx.restore();
 
         // Indicatori Pagine
