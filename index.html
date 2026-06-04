@@ -87,7 +87,7 @@
         gltfLoader.load('assets/macchinario.glb', (gltf) => {
             const machineModel = gltf.scene;
             // Allineato alla posizione della tappa 2
-            machineModel.position.set(3, 0, -3.5); 
+            machineModel.position.set(-1, 0, -3.5); 
             machineModel.name = 'macchinario';
             scene.add(machineModel);
             environmentColliders.push(machineModel);
