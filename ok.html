@@ -68,36 +68,9 @@
             new THREE.MeshStandardMaterial({ color: 0x2b2b2b })
         );
         table.position.set(0, 0.4, -1.5);
-        table.name = 'table';
         scene.add(table);
 
         const interactables = [];
-
-        // -----------------------------------------------------------------
-        // CONFIGURAZIONE PERCORSO GUIDATO (Location Pointer)
-        // -----------------------------------------------------------------
-        const targetStage1 = new THREE.Vector3(0, 0.01, -0.6); // Davanti al tavolo
-        let stage1Completed = false;
-
-        // Gruppo unico per contenere gli elementi del punto di interesse
-        const locationPointerGroup = new THREE.Group();
-        locationPointerGroup.position.copy(targetStage1);
-        scene.add(locationPointerGroup);
-
-        // Cerchio luminoso a terra
-        const stageMarkerGeo = new THREE.RingGeometry(0.3, 0.35, 32).rotateX(-Math.PI / 2);
-        const stageMarkerMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
-        const stageMarker = new THREE.Mesh(stageMarkerGeo, stageMarkerMat);
-        locationPointerGroup.add(stageMarker);
-
-        // Triangolo 3D indicatore (Cono a 4 facce capovolto che punta in basso)
-        const coneGeo = new THREE.ConeGeometry(0.08, 0.2, 4);
-        coneGeo.rotateX(Math.PI); // Ruota di 180 gradi per farlo puntare in basso
-        const coneMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff });
-        const stageTriangle = new THREE.Mesh(coneGeo, coneMat);
-        stageTriangle.position.y = 0.5; // Altezza iniziale sopra il cerchio
-        locationPointerGroup.add(stageTriangle);
-
 
         // -----------------------------------------------------------------
         // CONFIGURAZIONE DATI E SCHEDA INFORMATIVA SOLIDA (Canvas)
@@ -128,13 +101,12 @@
             }
         ];
 
-        // Canvas riproporzionato a 400x300
-        const infoCanvas = document.createElement('canvas'); infoCanvas.width = 400; infoCanvas.height = 300;
+        // Creazione della scheda informativa singola
+        const infoCanvas = document.createElement('canvas'); infoCanvas.width = 512; infoCanvas.height = 256;
         const infoCtx = infoCanvas.getContext('2d');
         const infoTexture = new THREE.CanvasTexture(infoCanvas);
         
-        // Larghezza ridotta a 0.6
-        const infoPanelGeo = new THREE.PlaneGeometry(0.6, 0.45);
+        const infoPanelGeo = new THREE.PlaneGeometry(0.9, 0.45);
         const infoPanelMat = new THREE.MeshBasicMaterial({ map: infoTexture, side: THREE.DoubleSide, transparent: false });
         const infoPanelMesh = new THREE.Mesh(infoPanelGeo, infoPanelMat);
         
@@ -142,7 +114,10 @@
         infoGroup.add(infoPanelMesh); 
         infoGroup.visible = false; 
         
+        // MODIFICA ABILITÀ HUD: Agganciamo il gruppo direttamente alla camera, non alla scena
         camera.add(infoGroup); 
+        
+        // Posizioniamo la scheda esattamente davanti agli occhi dell'utente (X=0, Y=0, Z=-0.8 metri)
         infoGroup.position.set(0, 0, -0.8);
 
         // Helper per il wrapping del testo sul Canvas
@@ -159,12 +134,12 @@
         }
 
         function disegnaSchedaMinimalSolida(titolo, descrizione) {
-            infoCtx.fillStyle = '#121212'; infoCtx.fillRect(0, 0, 400, 300);
-            infoCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; infoCtx.lineWidth = 4; infoCtx.strokeRect(0, 0, 400, 300);
-            infoCtx.fillStyle = '#ffffff'; infoCtx.font = '500 22px sans-serif'; infoCtx.fillText(titolo.toUpperCase(), 30, 50);
-            infoCtx.fillStyle = '#aaaaaa'; infoCtx.font = '300 16px sans-serif';
-            wrapText(infoCtx, descrizione, 30, 95, 340, 24);
-            infoCtx.fillStyle = '#666666'; infoCtx.font = 'bold 12px sans-serif'; infoCtx.fillText("PREMI A / X PER CHIUDERE", 30, 265);
+            infoCtx.fillStyle = '#121212'; infoCtx.fillRect(0, 0, 512, 256);
+            infoCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; infoCtx.lineWidth = 4; infoCtx.strokeRect(0, 0, 512, 256);
+            infoCtx.fillStyle = '#ffffff'; infoCtx.font = '500 24px sans-serif'; infoCtx.fillText(titolo.toUpperCase(), 40, 60);
+            infoCtx.fillStyle = '#aaaaaa'; infoCtx.font = '300 17px sans-serif';
+            wrapText(infoCtx, descrizione, 40, 110, 432, 26);
+            infoCtx.fillStyle = '#666666'; infoCtx.font = 'bold 12px sans-serif'; infoCtx.fillText("PREMI A / X PER CHIUDERE", 40, 225);
             infoTexture.needsUpdate = true; 
         }
 
@@ -250,31 +225,10 @@
         
         renderer.setAnimationLoop(() => {
             const session = renderer.xr.getSession();
-            const time = performance.now() * 0.003; 
             
             if (currentHoverObject && currentHoverObject.material && currentHoverObject.material.emissive) {
                 currentHoverObject.material.emissive.setHex(0x000000);
                 currentHoverObject = null;
-            }
-
-            // --- ANIMAZIONE E LOGICA DEL LOCATION POINTER ---
-            if (!stage1Completed) {
-                // Lampeggio del cerchio (Modulazione opacità)
-                stageMarkerMat.opacity = 0.3 + Math.sin(time * 2) * 0.4;
-
-                // Movimento verticale del triangolo (Floating animation)
-                stageTriangle.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
-
-                // Controllo distanza utente per completamento tappa
-                const userPos2D = new THREE.Vector2(cameraRig.position.x, cameraRig.position.z);
-                const targetPos2D = new THREE.Vector2(targetStage1.x, targetStage1.z);
-                const distanceToTarget = userPos2D.distanceTo(targetPos2D);
-
-                if (distanceToTarget < 0.5) {
-                    // Arrivato! Nascondi l'intero blocco pointer
-                    stage1Completed = true;
-                    locationPointerGroup.visible = false;
-                }
             }
 
             if (session) {
@@ -299,25 +253,18 @@
                         }
                     }
 
-                    // Collisione tavolo + pavimento
-                    const teleportIntersects = raycaster.intersectObjects([floor, table]);
-                    if (teleportIntersects.length > 0) {
-                        const hitObj = teleportIntersects[0].object;
-                        const hitDist = teleportIntersects[0].distance;
+                    const floorIntersects = raycaster.intersectObject(floor);
+                    if (floorIntersects.length > 0) {
+                        const floorDist = floorIntersects[0].distance;
                         
                         if (isTeleportMode && controller === activeTeleportController) {
-                            if (hitObj === floor) {
-                                currentRayLength = hitDist; 
-                                teleportPoint.copy(teleportIntersects[0].point);
-                                teleportMarker.position.copy(teleportPoint);
-                                teleportMarker.position.y = 0.005;
-                                teleportMarker.visible = true;
-                            } else if (hitObj === table) {
-                                currentRayLength = hitDist;
-                                teleportMarker.visible = false; 
-                            }
+                            currentRayLength = floorDist; 
+                            teleportPoint.copy(floorIntersects[0].point);
+                            teleportMarker.position.copy(teleportPoint);
+                            teleportMarker.position.y = 0.005;
+                            teleportMarker.visible = true;
                         } else if (!objIntersects.length) {
-                            currentRayLength = hitDist;
+                            currentRayLength = floorDist;
                         }
                     } else if (isTeleportMode && controller === activeTeleportController) {
                         teleportMarker.visible = false;
@@ -338,20 +285,33 @@
 
                                 if (isInfoPanelOpen) {
                                     if (currentAttachedObject === currentHoverObject) {
+                                        // CASO 1: Cliccato lo stesso oggetto -> CHIUDI scheda
                                         infoGroup.visible = false;
                                         isInfoPanelOpen = false;
                                         currentAttachedObject = null;
                                     } else {
+                                        // CASO 2: Cliccato un NUOVO oggetto mentre un'altra scheda è aperta
                                         disegnaSchedaMinimalSolida(data.title, data.info);
+                                        
+                                        // RIMOZIONE VECCHI CALCOLI POSIZIONE: 
+                                        // Avendo agganciato l'infoGroup alla camera, non serve più impostare 
+                                        // coordinate spaziali relative all'asset o richiamare lookAt().
+                                        
                                         currentAttachedObject = currentHoverObject;
                                     }
                                 } else {
+                                    // CASO 3: Nessuna scheda aperta -> APRI nuova scheda centrale
                                     disegnaSchedaMinimalSolida(data.title, data.info);
+
+                                    // RIMOZIONE VECCHI CALCOLI POSIZIONE:
+                                    // La scheda compare istantaneamente fissa al centro della vista.
+                                    
                                     infoGroup.visible = true;
                                     isInfoPanelOpen = true;
                                     currentAttachedObject = currentHoverObject;
                                 }
                             } else if (isInfoPanelOpen) {
+                                // AZIONE: Cliccato A/X sul vuoto mentre una scheda è aperta -> CHIUDI scheda
                                 infoGroup.visible = false;
                                 isInfoPanelOpen = false;
                                 currentAttachedObject = null;
