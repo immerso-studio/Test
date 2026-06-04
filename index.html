@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Training VR Industriale - Obiettivi in Spazio 3D</title>
+    <title>Training VR Industriale - Tutorial d'Accesso Corretto</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     </style>
@@ -73,6 +73,92 @@
         const interactables = [];
 
         // -----------------------------------------------------------------
+        // CONFIGURAZIONE DI STATO E DATI DEL TUTORIAL
+        // -----------------------------------------------------------------
+        let isTutorialActive = true;
+        let tutorialIndex = 0;
+        let isHoveringButton = false;
+
+        const tutorialSlides = [
+            { title: "1. INDICATORE VR", text: "Questo cerchio azzurro mostra la tua prossima destinazione operativa o i punti di interesse attivi nell'area di addestramento.", imgSrc: "assets/tutorial/1.webp", imgObj: null },
+            { title: "2. INTERAZIONE OGGETTI", text: "Punta un oggetto con il raggio laser e premi i tasti 'A' (Controller Destro) o 'X' (Controller Sinistro) per aprire o chiudere la sua scheda informativa.", imgSrc: "assets/tutorial/2.webp", imgObj: null },
+            { title: "3. TELETRASPORTO DI MOVIMENTO", text: "Tieni premuto il Trigger (Grilletto posteriore) per proiettare il raggio di spostamento azzurro. Rilascialo per teletrasportarti nel punto mirato.", imgSrc: "assets/tutorial/3.webp", imgObj: null }
+        ];
+
+        // Creazione Canvas e Mesh per il Tutorial fissa al Visore
+        const tutorialCanvas = document.createElement('canvas'); tutorialCanvas.width = 512; tutorialCanvas.height = 512;
+        const tutCtx = tutorialCanvas.getContext('2d');
+        const tutorialTexture = new THREE.CanvasTexture(tutorialCanvas);
+
+        const tutorialMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(0.5, 0.5), 
+            new THREE.MeshBasicMaterial({ map: tutorialTexture, side: THREE.DoubleSide, transparent: true })
+        );
+        const tutorialGroup = new THREE.Group();
+        tutorialGroup.add(tutorialMesh);
+        camera.add(tutorialGroup);
+        tutorialGroup.position.set(0, 0, -0.65); 
+
+        function wrapTextCentrato(ctx, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' '); let line = '';
+            for (let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + ' ';
+                if (ctx.measureText(testLine).width > maxWidth && n > 0) {
+                    ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight;
+                } else { line = testLine; }
+            } ctx.fillText(line, x, y);
+        }
+
+        function disegnaTutorialHUD() {
+            if (tutorialIndex >= tutorialSlides.length) return;
+            const slide = tutorialSlides[tutorialIndex];
+
+            tutCtx.clearRect(0, 0, 512, 512);
+
+            // Sfondo scheda scuro elegante
+            tutCtx.fillStyle = 'rgba(20, 20, 20, 0.98)'; tutCtx.fillRect(0, 0, 512, 512);
+            tutCtx.strokeStyle = 'rgba(0, 210, 255, 0.4)'; tutCtx.lineWidth = 6; tutCtx.strokeRect(0, 0, 512, 512);
+
+            // Titolo Slide
+            tutCtx.fillStyle = '#ffffff'; tutCtx.font = 'bold 24px sans-serif'; tutCtx.textAlign = 'center';
+            tutCtx.fillText(slide.title, 256, 55);
+
+            // CORREZIONE: Rendering Immagine Tutorial mantenendola perfettamente QUADRATA (1:1)
+            if (slide.imgObj) {
+                const imgSize = 180; 
+                tutCtx.drawImage(slide.imgObj, 256 - imgSize / 2, 95, imgSize, imgSize);
+            }
+
+            // Testo Istruzioni riposizionato leggermente più in basso per fare spazio al quadrato
+            tutCtx.fillStyle = '#cccccc'; tutCtx.font = '16px sans-serif'; tutCtx.textAlign = 'center';
+            wrapTextCentrato(tutCtx, slide.text, 256, 315, 420, 24);
+
+            // Tasto "PROSEGUI" Blu (Interattivo con mappatura UV fissa)
+            tutCtx.fillStyle = isHoveringButton ? '#00bcff' : '#0055ff'; 
+            tutCtx.fillRect(102, 435, 308, 51);
+
+            tutCtx.fillStyle = '#ffffff'; tutCtx.font = 'bold 18px sans-serif';
+            tutCtx.fillText(tutorialIndex === tutorialSlides.length - 1 ? "INIZIA TRAINING" : "PROSEGUI", 256, 467);
+
+            tutorialTexture.needsUpdate = true;
+        }
+
+        // Caricamento immagini tutorial
+        let loadedImagesCount = 0;
+        tutorialSlides.forEach((slide) => {
+            const img = new Image();
+            img.src = slide.imgSrc;
+            img.onload = () => {
+                slide.imgObj = img;
+                loadedImagesCount++;
+                if (loadedImagesCount === tutorialSlides.length) {
+                    disegnaTutorialHUD();
+                }
+            };
+        });
+
+
+        // -----------------------------------------------------------------
         // CONFIGURAZIONE LOCATION POINTER (TAPPA 1)
         // -----------------------------------------------------------------
         const targetStage1 = new THREE.Vector3(0, 0.01, -0.6); 
@@ -80,6 +166,7 @@
 
         const locationPointerGroup = new THREE.Group();
         locationPointerGroup.position.copy(targetStage1);
+        locationPointerGroup.visible = false; 
         scene.add(locationPointerGroup);
 
         const stageMarkerMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
@@ -91,10 +178,6 @@
         stageTriangle.position.y = 0.5; 
         locationPointerGroup.add(stageTriangle);
 
-
-        // -----------------------------------------------------------------
-        // SISTEMA DI TRACCIAMENTO ISPEZIONE OGGETTI
-        // -----------------------------------------------------------------
         const inspectedObjects = new Set(); 
         const totalObjectsToInspect = 3;
         let taskCompleted = false;
@@ -103,52 +186,33 @@
         // -----------------------------------------------------------------
         // CREAZIONE SCHEDA OBIETTIVO (Fissa nello Spazio 3D)
         // -----------------------------------------------------------------
-        // Risoluzione aumentata (512x320) per garantire testi nitidi nel mondo 3D a distanza
         const objCanvas = document.createElement('canvas'); objCanvas.width = 512; objCanvas.height = 320;
         const objCtx = objCanvas.getContext('2d');
         const objTexture = new THREE.CanvasTexture(objCanvas);
 
-        // Geometria fisica del pannello nello spazio (Larghezza: 0.8m, Altezza: 0.5m)
-        const objPanelGeo = new THREE.PlaneGeometry(0.8, 0.5);
-        const objPanelMat = new THREE.MeshBasicMaterial({ map: objTexture, side: THREE.DoubleSide, transparent: true });
-        const objPanelMesh = new THREE.Mesh(objPanelGeo, objPanelMat);
-
+        const objPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ map: objTexture, side: THREE.DoubleSide, transparent: true }));
         const objectiveGroup = new THREE.Group();
         objectiveGroup.add(objPanelMesh);
         
-        // MODIFICA CRUCCIALE: Agganciato alla SCENA globale e non alla camera del visore
-        scene.add(objectiveGroup);
-        
-        // Posizionato fluttuante nello spazio a livello occhi (Y=1.45) subito dietro al banco da lavoro (Z=-1.96)
+        scene.add(objectiveGroup); 
         objectiveGroup.position.set(0, 1.45, -1.96); 
-        objectiveGroup.visible = false; // Appare solo quando l'utente calpesta il pointer
+        objectiveGroup.visible = false; 
 
         function disegnaSchedaObiettivo3D() {
             objCtx.clearRect(0, 0, 512, 320);
-            
-            // Sfondo scuro olografico
             objCtx.fillStyle = 'rgba(15, 15, 15, 0.95)'; objCtx.fillRect(0, 0, 512, 320);
             
             if (taskCompleted) {
-                objCtx.strokeStyle = '#00ff66'; 
-                objCtx.lineWidth = 6; objCtx.strokeRect(0, 0, 512, 320);
-                
+                objCtx.strokeStyle = '#00ff66'; objCtx.lineWidth = 6; objCtx.strokeRect(0, 0, 512, 320);
                 objCtx.fillStyle = '#00ff66'; objCtx.font = 'bold 24px sans-serif'; objCtx.fillText("✔ OBIETTIVO COMPLETATO", 40, 60);
-                objCtx.fillStyle = '#ffffff'; objCtx.font = '18px sans-serif';
-                objCtx.fillText("Tutti i DPI sul banco sono stati verificati.", 40, 130);
+                objCtx.fillStyle = '#ffffff'; objCtx.font = '18px sans-serif'; objCtx.fillText("Tutti i DPI sul banco sono stati verificati.", 40, 130);
                 objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 16px sans-serif'; objCtx.fillText("PROSSIMA AREA DI ADDESTRAMENTO SBLOCCATA", 40, 240);
             } else {
-                objCtx.strokeStyle = 'rgba(0, 210, 255, 0.5)'; 
-                objCtx.lineWidth = 6; objCtx.strokeRect(0, 0, 512, 320);
-
+                objCtx.strokeStyle = 'rgba(0, 210, 255, 0.5)'; objCtx.lineWidth = 6; objCtx.strokeRect(0, 0, 512, 320);
                 objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 22px sans-serif'; objCtx.fillText("OBIETTIVO: ISPEZIONE DPI", 40, 60);
-                
                 objCtx.fillStyle = '#cccccc'; objCtx.font = '16px sans-serif';
-                wrapText(objCtx, "Seleziona ed apri la scheda informativa di tutti e tre i dispositivi di protezione presenti sul tavolo per verificarne la conformità tecnica prima di iniziare i lavori.", 40, 110, 432, 26);
-                
-                // Avanzamento numerico
-                objCtx.fillStyle = '#ffffff'; objCtx.font = 'bold 18px sans-serif';
-                objCtx.fillText(`DPI Ispezionati: ${inspectedObjects.size} / ${totalObjectsToInspect}`, 40, 260);
+                wrapTextCentrato(objCtx, "Seleziona ed apri la scheda informativa di tutti e tre i dispositivi di protezione presenti sul tavolo per verificarne la conformità tecnica prima di iniziare i lavori.", 256, 110, 432, 26);
+                objCtx.fillStyle = '#ffffff'; objCtx.font = 'bold 18px sans-serif'; objCtx.fillText(`DPI Ispezionati: ${inspectedObjects.size} / ${totalObjectsToInspect}`, 40, 260);
             }
             objTexture.needsUpdate = true;
         }
@@ -157,9 +221,7 @@
         // -----------------------------------------------------------------
         // CONFIGURAZIONE SCHEDA INFORMATIVA DPI (Fissa sul Visore)
         // -----------------------------------------------------------------
-        let isInfoPanelOpen = false;
-        let currentHoverObject = null;
-        let currentAttachedObject = null; 
+        let isInfoPanelOpen = false; let currentHoverObject = null; let currentAttachedObject = null; 
 
         const ppeDati = [
             { id: "casco", url: 'assets/safety/casco.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5), title: "Casco di Sicurezza", info: "Protegge il capo da urti accidentali e dalla caduta dall'alto di materiali. Ispeziona regolarmente per crepe." },
@@ -168,32 +230,25 @@
         ];
 
         const infoCanvas = document.createElement('canvas'); infoCanvas.width = 400; infoCanvas.height = 300;
-        const infoCtx = infoCanvas.getContext('2d');
-        const infoTexture = new THREE.CanvasTexture(infoCanvas);
-        
+        const infoCtx = infoCanvas.getContext('2d'); const infoTexture = new THREE.CanvasTexture(infoCanvas);
         const infoPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.45), new THREE.MeshBasicMaterial({ map: infoTexture, side: THREE.DoubleSide }));
-        const infoGroup = new THREE.Group(); 
-        infoGroup.add(infoPanelMesh); 
-        infoGroup.visible = false; 
-        camera.add(infoGroup); 
-        infoGroup.position.set(0, 0, -0.8); // Rimane agganciato al centro degli occhi durante la lettura
-
-        function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-            const words = text.split(' '); let line = '';
-            for (let n = 0; n < words.length; n++) {
-                let testLine = line + words[n] + ' ';
-                if (ctx.measureText(testLine).width > maxWidth && n > 0) {
-                    ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight;
-                } else { line = testLine; }
-            } ctx.fillText(line, x, y);
-        }
+        const infoGroup = new THREE.Group(); infoGroup.add(infoPanelMesh); infoGroup.visible = false; 
+        camera.add(infoGroup); infoGroup.position.set(0, 0, -0.8);
 
         function disegnaSchedaMinimalSolida(titolo, descrizione) {
             infoCtx.fillStyle = '#121212'; infoCtx.fillRect(0, 0, 400, 300);
             infoCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; infoCtx.lineWidth = 4; infoCtx.strokeRect(0, 0, 400, 300);
             infoCtx.fillStyle = '#ffffff'; infoCtx.font = '500 22px sans-serif'; infoCtx.fillText(titolo.toUpperCase(), 30, 50);
             infoCtx.fillStyle = '#aaaaaa'; infoCtx.font = '300 16px sans-serif';
-            wrapText(infoCtx, descrizione, 30, 95, 340, 24);
+            
+            const words = descrizione.split(' '); let line = ''; let y = 95;
+            for (let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + ' ';
+                if (infoCtx.measureText(testLine).width > 340 && n > 0) {
+                    infoCtx.fillText(line, 30, y); line = words[n] + ' '; y += 24;
+                } else { line = testLine; }
+            } infoCtx.fillText(line, 30, y);
+
             infoCtx.fillStyle = '#666666'; infoCtx.font = 'bold 12px sans-serif'; infoCtx.fillText("PREMI A / X PER CHIUDERE", 30, 265);
             infoTexture.needsUpdate = true; 
         }
@@ -205,10 +260,8 @@
                 const model = gltf.scene; model.position.copy(data.pos);
                 model.traverse((child) => {
                     if (child.isMesh) {
-                        child.userData.isInteractable = true; 
-                        child.userData.id = data.id; 
-                        child.userData.title = data.title; 
-                        child.userData.info = data.info;
+                        child.userData.isInteractable = true; child.userData.id = data.id; 
+                        child.userData.title = data.title; child.userData.info = data.info;
                         interactables.push(child); 
                     }
                 });
@@ -216,22 +269,16 @@
             }, null, (error) => { console.error(error); });
         });
 
-        // -----------------------------------------------------------------
-        // TELETRASPORTO VOLUMETRICO SFUMATO
-        // -----------------------------------------------------------------
+        // Teletrasporto standard
         const teleportHeight = 0.6; const teleportRadius = 0.25; 
-        const teleportGeo = new THREE.CylinderGeometry(teleportRadius, teleportRadius, teleportHeight, 32, 1, true);
-        teleportGeo.translate(0, teleportHeight / 2, 0); 
-
+        const teleportGeo = new THREE.CylinderGeometry(teleportRadius, teleportRadius, teleportHeight, 32, 1, true).translate(0, teleportHeight / 2, 0); 
         const teleportMat = new THREE.ShaderMaterial({
             uniforms: { uColor: { value: new THREE.Color(0x00d2ff) } },
             vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
             fragmentShader: `varying vec2 vUv; uniform vec3 uColor; void main() { float alpha = 1.0 - vUv.y; alpha = pow(alpha, 1.5); gl_FragColor = vec4(uColor, alpha); }`,
             transparent: true, side: THREE.DoubleSide, depthWrite: false       
         });
-
-        const teleportMarker = new THREE.Mesh(teleportGeo, teleportMat);
-        teleportMarker.visible = false; scene.add(teleportMarker);
+        const teleportMarker = new THREE.Mesh(teleportGeo, teleportMat); teleportMarker.visible = false; scene.add(teleportMarker);
 
         // Setup Controller & Laser
         const controller1 = renderer.xr.getController(0); const controller2 = renderer.xr.getController(1);
@@ -248,8 +295,14 @@
 
         let isTeleportMode = false; let activeTeleportController = null; let teleportPoint = new THREE.Vector3();
 
-        function onTriggerStart(event) { activeTeleportController = event.target; isTeleportMode = true; }
+        // CORREZIONE: Durante il tutorial il Trigger posteriore non fa assolutamente nulla (Impedisce spostamenti indesiderati)
+        function onTriggerStart(event) { 
+            if (isTutorialActive) return; 
+            activeTeleportController = event.target; isTeleportMode = true; 
+        }
+
         function onTriggerEnd(event) {
+            if (isTutorialActive) return;
             if (isTeleportMode && teleportMarker.visible && activeTeleportController === event.target) {
                 cameraRig.position.set(teleportPoint.x, cameraRig.position.y, teleportPoint.z);
             }
@@ -276,8 +329,8 @@
                 currentHoverObject = null;
             }
 
-            // --- ANIMAZIONE LOCATION POINTER ---
-            if (!stage1Triggered) {
+            // Animazione Pointer post-tutorial
+            if (!isTutorialActive && !stage1Triggered) {
                 stageMarkerMat.opacity = 0.3 + Math.sin(time * 2) * 0.4;
                 stageTriangle.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
 
@@ -287,14 +340,14 @@
                 if (userPos2D.distanceTo(targetPos2D) < 0.5) {
                     stage1Triggered = true;
                     locationPointerGroup.visible = false; 
-                    
-                    // Inizializza graficamente e mostra la lavagna obiettivi nel mondo 3D
                     disegnaSchedaObiettivo3D();
                     objectiveGroup.visible = true; 
                 }
             }
 
             if (session) {
+                let hoveringThisFrame = false;
+
                 for (const source of session.inputSources) {
                     const controller = source.handedness === 'right' ? controller1 : controller2;
                     const line = controller.getObjectByName('line');
@@ -306,63 +359,91 @@
 
                     let currentRayLength = MAX_LASER_RANGE;
 
-                    const objIntersects = raycaster.intersectObjects(interactables);
-                    if (objIntersects.length > 0) {
-                        currentHoverObject = objIntersects[0].object;
-                        currentRayLength = objIntersects[0].distance; 
-                        if (!isTeleportMode && currentHoverObject.material && currentHoverObject.material.emissive) {
-                            currentHoverObject.material.emissive.setHex(0x222222);
-                        }
-                    }
-
-                    const teleportIntersects = raycaster.intersectObjects([floor, table]);
-                    if (teleportIntersects.length > 0) {
-                        const hitObj = teleportIntersects[0].object; const hitDist = teleportIntersects[0].distance;
-                        if (isTeleportMode && controller === activeTeleportController) {
-                            if (hitObj === floor) {
-                                currentRayLength = hitDist; teleportPoint.copy(teleportIntersects[0].point);
-                                teleportMarker.position.copy(teleportPoint); teleportMarker.position.y = 0.001;
-                                teleportMarker.visible = true;
-                            } else if (hitObj === table) {
-                                currentRayLength = hitDist; teleportMarker.visible = false; 
+                    // Raycasting Tutorial
+                    if (isTutorialActive) {
+                        const tutIntersects = raycaster.intersectObject(tutorialMesh);
+                        if (tutIntersects.length > 0) {
+                            currentRayLength = tutIntersects[0].distance;
+                            const uv = tutIntersects[0].uv;
+                            if (uv.x >= 0.2 && uv.x <= 0.8 && uv.y >= 0.05 && uv.y <= 0.15) {
+                                hoveringThisFrame = true;
                             }
-                        } else if (!objIntersects.length) { currentRayLength = hitDist; }
-                    } else if (isTeleportMode && controller === activeTeleportController) {
-                        teleportMarker.visible = false;
+                        }
+                        line.scale.z = currentRayLength;
+                    } else {
+                        // Raycasting Mondo di Gioco Standard
+                        const objIntersects = raycaster.intersectObjects(interactables);
+                        if (objIntersects.length > 0) {
+                            currentHoverObject = objIntersects[0].object; currentRayLength = objIntersects[0].distance; 
+                            if (!isTeleportMode && currentHoverObject.material && currentHoverObject.material.emissive) {
+                                currentHoverObject.material.emissive.setHex(0x222222);
+                            }
+                        }
+
+                        const teleportIntersects = raycaster.intersectObjects([floor, table]);
+                        if (teleportIntersects.length > 0) {
+                            const hitObj = teleportIntersects[0].object; const hitDist = teleportIntersects[0].distance;
+                            if (isTeleportMode && controller === activeTeleportController) {
+                                if (hitObj === floor) {
+                                    currentRayLength = hitDist; teleportPoint.copy(teleportIntersects[0].point);
+                                    teleportMarker.position.copy(teleportPoint).y = 0.001; teleportMarker.visible = true;
+                                } else if (hitObj === table) {
+                                    currentRayLength = hitDist; teleportMarker.visible = false; 
+                                }
+                            } else if (!objIntersects.length) { currentRayLength = hitDist; }
+                        } else if (isTeleportMode && controller === activeTeleportController) { teleportMarker.visible = false; }
+
+                        line.scale.z = currentRayLength; 
                     }
 
-                    line.scale.z = currentRayLength; 
-
-                    // --- INPUT E LOGICA COMPLETAMENTO ---
+                    // --- LOGICA INPUT UNIFICATA TASTI (A / X) ---
                     if (source.gamepad) {
                         const buttonPressed = source.gamepad.buttons[4]?.pressed || false; const hand = source.handedness;
                         if (buttonPressed && !prevButtonsState[hand]) {
-                            if (currentHoverObject) {
-                                const data = currentHoverObject.userData;
-                                if (isInfoPanelOpen) {
-                                    if (currentAttachedObject === currentHoverObject) {
-                                        infoGroup.visible = false; isInfoPanelOpen = false; currentAttachedObject = null;
+                            
+                            // CORREZIONE CRUCCIALE: Avanzamento del tutorial tramite tasti A / X
+                            if (isTutorialActive) {
+                                if (isHoveringButton) {
+                                    tutorialIndex++;
+                                    if (tutorialIndex < tutorialSlides.length) {
+                                        disegnaTutorialHUD();
                                     } else {
-                                        disegnaSchedaMinimalSolida(data.title, data.info); currentAttachedObject = currentHoverObject;
-                                    }
-                                } else {
-                                    disegnaSchedaMinimalSolida(data.title, data.info); infoGroup.visible = true; isInfoPanelOpen = true; currentAttachedObject = currentHoverObject;
-                                    
-                                    // Se l'utente esamina l'oggetto corrente, aggiorna la lavagna 3D sullo sfondo
-                                    if (stage1Triggered && !taskCompleted) {
-                                        inspectedObjects.add(data.id);
-                                        if (inspectedObjects.size === totalObjectsToInspect) {
-                                            taskCompleted = true;
-                                        }
-                                        disegnaSchedaObiettivo3D(); 
+                                        isTutorialActive = false;
+                                        tutorialGroup.visible = false;
+                                        locationPointerGroup.visible = true; // Sblocca l'esperienza
                                     }
                                 }
-                            } else if (isInfoPanelOpen) {
-                                infoGroup.visible = false; isInfoPanelOpen = false; currentAttachedObject = null;
+                            } else {
+                                // Logica d'ispezione standard dei DPI ad addestramento iniziato
+                                if (currentHoverObject) {
+                                    const data = currentHoverObject.userData;
+                                    if (isInfoPanelOpen) {
+                                        if (currentAttachedObject === currentHoverObject) {
+                                            infoGroup.visible = false; isInfoPanelOpen = false; currentAttachedObject = null;
+                                        } else {
+                                            disegnaSchedaMinimalSolida(data.title, data.info); currentAttachedObject = currentHoverObject;
+                                        }
+                                    } else {
+                                        disegnaSchedaMinimalSolida(data.title, data.info); infoGroup.visible = true; isInfoPanelOpen = true; currentAttachedObject = currentHoverObject;
+                                        
+                                        if (stage1Triggered && !taskCompleted) {
+                                            inspectedObjects.add(data.id);
+                                            if (inspectedObjects.size === totalObjectsToInspect) taskCompleted = true;
+                                            disegnaSchedaObiettivo3D(); 
+                                        }
+                                    }
+                                } else if (isInfoPanelOpen) {
+                                    infoGroup.visible = false; isInfoPanelOpen = false; currentAttachedObject = null;
+                                }
                             }
                         }
                         prevButtonsState[hand] = buttonPressed; 
                     }
+                }
+
+                if (isTutorialActive && hoveringThisFrame !== isHoveringButton) {
+                    isHoveringButton = hoveringThisFrame;
+                    disegnaTutorialHUD();
                 }
             }
             renderer.render(scene, camera);
