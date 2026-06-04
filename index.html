@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Training VR Industriale - Nuovi DPI e Macchinario</title>
+    <title>Training VR Industriale - Nuovi DPI, Macchinario ed Emergenza</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     </style>
@@ -35,6 +35,19 @@
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
         cameraRig.add(camera);
         scene.add(cameraRig);
+
+        // -----------------------------------------------------------------
+        // CONFIGURAZIONE AUDIO
+        // -----------------------------------------------------------------
+        const audioListener = new THREE.AudioListener();
+        camera.add(audioListener);
+        const rumoreAudio = new THREE.Audio(audioListener);
+        const audioLoader = new THREE.AudioLoader();
+        audioLoader.load('assets/rumore.mp3', (buffer) => {
+            rumoreAudio.setBuffer(buffer);
+            rumoreAudio.setLoop(true);
+            rumoreAudio.setVolume(0.5);
+        }, undefined, (err) => console.warn("Audio rumore.mp3 non trovato. Ignorare se non caricato."));
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(window.devicePixelRatio);
@@ -78,7 +91,6 @@
         // -----------------------------------------------------------------
         const gltfLoader = new GLTFLoader();
         
-        // Dati dei componenti del macchinario da cercare
         const componentiMacchinario = {
             "Cabina_di_controllo_metallo": { id: "cabina", title: "Cabina di Controllo", info: "Pannello principale per la gestione della macchina. Verificare che non vi siano spie d'allarme attive." },
             "Tasto_rosso": { id: "tasto_emergenza", title: "Pulsante di Emergenza", info: "Blocca istantaneamente l'alimentazione in caso di pericolo. Assicurati che sia ben visibile e non ostruito." }
@@ -86,13 +98,11 @@
 
         gltfLoader.load('assets/macchinario.glb', (gltf) => {
             const machineModel = gltf.scene;
-            // Allineato alla posizione della tappa 2
             machineModel.position.set(-1, 0, -3.5); 
             machineModel.name = 'macchinario';
             scene.add(machineModel);
             environmentColliders.push(machineModel);
 
-            // Cerca le mesh specifiche
             machineModel.traverse((child) => {
                 if (child.isMesh && componentiMacchinario[child.name]) {
                     const datiComponente = componentiMacchinario[child.name];
@@ -100,7 +110,7 @@
                     child.userData.id = datiComponente.id; 
                     child.userData.title = datiComponente.title; 
                     child.userData.info = datiComponente.info;
-                    child.userData.isFaseMacchinario = true; // Tag per distinguerlo dai DPI
+                    child.userData.isFaseMacchinario = true;
                     interactables.push(child);
                 }
             });
@@ -211,6 +221,19 @@
         const stageTriangle2 = stageTriangle1.clone();
         locationPointerGroup2.add(stageMarker2); locationPointerGroup2.add(stageTriangle2);
 
+        // TAPPA 3: Allarme Emergenza Macchinario
+        const targetStage3 = new THREE.Vector3(1, 0.01, -2.8); // Vicino al macchinario
+        let stage3Triggered = false;
+        let emergenzaRisolta = false;
+        const locationPointerGroup3 = new THREE.Group();
+        locationPointerGroup3.position.copy(targetStage3);
+        locationPointerGroup3.visible = false; 
+        scene.add(locationPointerGroup3);
+
+        const stageMarker3 = stageMarker1.clone();
+        const stageTriangle3 = stageTriangle1.clone();
+        locationPointerGroup3.add(stageMarker3); locationPointerGroup3.add(stageTriangle3);
+
         // Variabili Logica DPI (Fase 1)
         const inspectedObjects = new Set(); 
         const totalObjectsToInspect = 3;
@@ -256,7 +279,7 @@
         }
 
         // -----------------------------------------------------------------
-        // CREAZIONE SCHEDA OBIETTIVO 2 (Fissa sul Macchinario)
+        // CREAZIONE SCHEDA OBIETTIVO 2 E 3 (Warning) AL MACCHINARIO
         // -----------------------------------------------------------------
         const machObjCanvas = document.createElement('canvas'); machObjCanvas.width = 512; machObjCanvas.height = 320;
         const machObjCtx = machObjCanvas.getContext('2d');
@@ -266,9 +289,8 @@
         const machObjectiveGroup = new THREE.Group();
         machObjectiveGroup.add(machObjPanelMesh);
         scene.add(machObjectiveGroup); 
-        // Posizioniamo la scheda obiettivo 2 sopra o vicino al macchinario
         machObjectiveGroup.position.set(3, 1.8, -3.2); 
-        machObjectiveGroup.rotation.y = -Math.PI / 6; // Ruotata leggermente verso il centro
+        machObjectiveGroup.rotation.y = -Math.PI / 6; 
         machObjectiveGroup.visible = false; 
 
         function disegnaSchedaObiettivoMacchinario3D() {
@@ -277,8 +299,8 @@
             
             if (macchinarioTaskCompleted) {
                 machObjCtx.strokeStyle = '#00ff66'; machObjCtx.lineWidth = 6; machObjCtx.strokeRect(0, 0, 512, 320);
-                machObjCtx.fillStyle = '#00ff66'; machObjCtx.font = 'bold 24px sans-serif'; machObjCtx.textAlign = 'left'; machObjCtx.fillText("✔ ADDESTRAMENTO CONCLUSO", 40, 60);
-                machObjCtx.fillStyle = '#ffffff'; machObjCtx.font = '18px sans-serif'; machObjCtx.fillText("Hai completato l'ispezione della macchina.", 40, 130);
+                machObjCtx.fillStyle = '#00ff66'; machObjCtx.font = 'bold 24px sans-serif'; machObjCtx.textAlign = 'left'; machObjCtx.fillText("✔ ISPEZIONE CONCLUSA", 40, 60);
+                machObjCtx.fillStyle = '#ffffff'; machObjCtx.font = '18px sans-serif'; machObjCtx.fillText("Spostati verso la pedana a lato della macchina.", 40, 130);
             } else {
                 machObjCtx.strokeStyle = 'rgba(255, 165, 0, 0.5)'; machObjCtx.lineWidth = 6; machObjCtx.strokeRect(0, 0, 512, 320);
                 machObjCtx.fillStyle = '#ffa500'; machObjCtx.font = 'bold 22px sans-serif'; machObjCtx.textAlign = 'left'; machObjCtx.fillText("OBIETTIVO: VERIFICA MACCHINARIO", 40, 60);
@@ -288,7 +310,39 @@
             }
             machObjTexture.needsUpdate = true;
         }
-        disegnaSchedaObiettivoMacchinario3D(); // Inizializzazione canvas
+        disegnaSchedaObiettivoMacchinario3D(); 
+
+        // -- SCHEDA WARNING (Fase 3) --
+        const warningCanvas = document.createElement('canvas'); warningCanvas.width = 512; warningCanvas.height = 320;
+        const warningCtx = warningCanvas.getContext('2d');
+        const warningTexture = new THREE.CanvasTexture(warningCanvas);
+
+        const warningPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ map: warningTexture, side: THREE.DoubleSide, transparent: true }));
+        const warningGroup = new THREE.Group();
+        warningGroup.add(warningPanelMesh);
+        scene.add(warningGroup); 
+        warningGroup.position.set(1, 1.8, -3.8); // Più vicino all'area di emergenza
+        warningGroup.rotation.y = -Math.PI / 10;
+        warningGroup.visible = false; 
+
+        function disegnaSchedaWarning() {
+            warningCtx.clearRect(0, 0, 512, 320);
+            
+            if (emergenzaRisolta) {
+                warningCtx.fillStyle = 'rgba(10, 25, 10, 0.95)'; warningCtx.fillRect(0, 0, 512, 320);
+                warningCtx.strokeStyle = '#00ff66'; warningCtx.lineWidth = 6; warningCtx.strokeRect(0, 0, 512, 320);
+                warningCtx.fillStyle = '#00ff66'; warningCtx.font = 'bold 24px sans-serif'; warningCtx.textAlign = 'left'; warningCtx.fillText("✔ MACCHINARIO IN SICUREZZA", 40, 60);
+                warningCtx.fillStyle = '#ffffff'; warningCtx.font = '18px sans-serif';
+                wrapTextCentrato(warningCtx, "Hai interrotto correttamente l'alimentazione premendo il tasto d'emergenza. Addestramento completato.", 40, 120, 432, 26);
+            } else {
+                warningCtx.fillStyle = 'rgba(30, 0, 0, 0.95)'; warningCtx.fillRect(0, 0, 512, 320);
+                warningCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)'; warningCtx.lineWidth = 6; warningCtx.strokeRect(0, 0, 512, 320);
+                warningCtx.fillStyle = '#ff0000'; warningCtx.font = 'bold 24px sans-serif'; warningCtx.textAlign = 'left'; warningCtx.fillText("⚠ ATTENZIONE: PERICOLO", 40, 60);
+                warningCtx.fillStyle = '#ffffff'; warningCtx.font = '18px sans-serif';
+                wrapTextCentrato(warningCtx, "Il macchinario è in funzione senza protezioni! Premi immediatamente il TASTO ROSSO di emergenza sulla console per fermarlo.", 40, 110, 432, 26);
+            }
+            warningTexture.needsUpdate = true;
+        }
 
 
         // -----------------------------------------------------------------
@@ -333,7 +387,7 @@
                     if (child.isMesh) {
                         child.userData.isInteractable = true; child.userData.id = data.id; 
                         child.userData.title = data.title; child.userData.info = data.info;
-                        child.userData.isFaseMacchinario = false; // Tag Fase 1
+                        child.userData.isFaseMacchinario = false; 
                         interactables.push(child); 
                     }
                 });
@@ -428,9 +482,32 @@
                     stage2Triggered = true;
                     locationPointerGroup2.visible = false;
                     objectiveGroup.visible = false; 
-                    
-                    // Mostriamo la scheda della Tappa 2
                     machObjectiveGroup.visible = true;
+                }
+            }
+
+            // TAPPA 3 LOGIC (Allarme)
+            if (macchinarioTaskCompleted && !stage3Triggered) {
+                locationPointerGroup3.visible = true;
+                stageMarkerMat.opacity = 0.3 + Math.sin(time * 2) * 0.4;
+                stageTriangle3.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
+
+                const userPos2D = new THREE.Vector2(cameraRig.position.x, cameraRig.position.z);
+                const targetPos2D3 = new THREE.Vector2(targetStage3.x, targetStage3.z);
+
+                if (userPos2D.distanceTo(targetPos2D3) < 0.6) {
+                    stage3Triggered = true;
+                    locationPointerGroup3.visible = false;
+                    machObjectiveGroup.visible = false; // Nascondiamo scheda tappa 2
+                    
+                    // Inizia fase d'emergenza
+                    disegnaSchedaWarning();
+                    warningGroup.visible = true;
+                    
+                    // Riproduce il rumore se caricato
+                    if (rumoreAudio.buffer && !rumoreAudio.isPlaying) {
+                        rumoreAudio.play();
+                    }
                 }
             }
 
@@ -463,7 +540,7 @@
                         if (objIntersects.length > 0) {
                             currentHoverObject = objIntersects[0].object; currentRayLength = objIntersects[0].distance; 
                             if (!isTeleportMode && currentHoverObject.material && currentHoverObject.material.emissive) {
-                                currentHoverObject.material.emissive.setHex(0x333333); // Aumentato leggermente per i pezzi di macchinario
+                                currentHoverObject.material.emissive.setHex(0x333333); 
                             }
                         }
 
@@ -510,6 +587,17 @@
                             } else {
                                 if (currentHoverObject) {
                                     const data = currentHoverObject.userData;
+                                    
+                                    // LOGICA EMERGENZA (TAPPA 3)
+                                    if (stage3Triggered && !emergenzaRisolta && data.id === "tasto_emergenza") {
+                                        emergenzaRisolta = true;
+                                        if (rumoreAudio.isPlaying) {
+                                            rumoreAudio.stop();
+                                        }
+                                        disegnaSchedaWarning(); // Aggiorna la scheda a "Completato"
+                                    }
+                                    
+                                    // Logica standard scheda info
                                     if (isInfoPanelOpen) {
                                         if (currentAttachedObject === currentHoverObject) {
                                             infoGroup.visible = false; isInfoPanelOpen = false; currentAttachedObject = null;
