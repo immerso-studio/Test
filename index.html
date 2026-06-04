@@ -43,7 +43,7 @@
         camera.add(audioListener);
         const rumoreAudio = new THREE.Audio(audioListener);
         const audioLoader = new THREE.AudioLoader();
-        audioLoader.load('assets/rumore.mp3', (buffer) => {
+        audioLoader.load('assets/audio/rumore.mp3', (buffer) => {
             rumoreAudio.setBuffer(buffer);
             rumoreAudio.setLoop(true);
             rumoreAudio.setVolume(0.5);
@@ -339,7 +339,7 @@
                 warningCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)'; warningCtx.lineWidth = 6; warningCtx.strokeRect(0, 0, 512, 320);
                 warningCtx.fillStyle = '#ff0000'; warningCtx.font = 'bold 24px sans-serif'; warningCtx.textAlign = 'left'; warningCtx.fillText("⚠ ATTENZIONE: PERICOLO", 40, 60);
                 warningCtx.fillStyle = '#ffffff'; warningCtx.font = '18px sans-serif';
-                wrapTextCentrato(warningCtx, "Il macchinario è in funzione senza protezioni! Premi immediatamente il TASTO ROSSO di emergenza sulla console per fermarlo.", 40, 110, 432, 26);
+                wrapTextCentrato(warningCtx, "Il macchinario è in è in avaria e va spento immediatamente!", 40, 110, 432, 26);
             }
             warningTexture.needsUpdate = true;
         }
