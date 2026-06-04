@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Training VR Industriale - Layout Corretto</title>
+    <title>Training VR Industriale - Unico Asset Tavolo</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     </style>
@@ -24,7 +24,7 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         // -----------------------------------------------------------------
-        // CONFIGURAZIONE AMBIENTE E CAMERA RIG (Setup VR Standard)
+        // CONFIGURAZIONE AMBIENTE E CAMERA RIG
         // -----------------------------------------------------------------
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a1a);
@@ -48,7 +48,7 @@
         dirLight.position.set(3, 10, 3);
         scene.add(dirLight);
 
-        // Pavimento e griglia
+        // Pavimento (Target principale del teletrasporto)
         const floor = new THREE.Mesh(
             new THREE.PlaneGeometry(40, 40),
             new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 })
@@ -60,15 +60,6 @@
         const grid = new THREE.GridHelper(40, 40, 0x333333, 0x222222);
         grid.position.y = 0.001;
         scene.add(grid);
-
-        // Banco da lavoro
-        const table = new THREE.Mesh(
-            new THREE.BoxGeometry(2.2, 0.8, 0.8),
-            new THREE.MeshStandardMaterial({ color: 0x2b2b2b })
-        );
-        table.position.set(0, 0.4, -1.5);
-        table.name = 'table';
-        scene.add(table);
 
         const interactables = [];
 
@@ -85,7 +76,6 @@
             { title: "3. TELETRASPORTO DI MOVIMENTO", text: "Tieni premuto il Trigger (Grilletto posteriore) per proiettare il raggio di spostamento azzurro. Rilascialo per teletrasportarti nel punto mirato.", imgSrc: "assets/tutorial/3.webp", imgObj: null }
         ];
 
-        // Creazione Canvas e Mesh per il Tutorial fissa al Visore
         const tutorialCanvas = document.createElement('canvas'); tutorialCanvas.width = 512; tutorialCanvas.height = 512;
         const tutCtx = tutorialCanvas.getContext('2d');
         const tutorialTexture = new THREE.CanvasTexture(tutorialCanvas);
@@ -114,26 +104,20 @@
             const slide = tutorialSlides[tutorialIndex];
 
             tutCtx.clearRect(0, 0, 512, 512);
-
-            // Sfondo scheda scuro elegante
             tutCtx.fillStyle = 'rgba(20, 20, 20, 0.98)'; tutCtx.fillRect(0, 0, 512, 512);
             tutCtx.strokeStyle = 'rgba(0, 210, 255, 0.4)'; tutCtx.lineWidth = 6; tutCtx.strokeRect(0, 0, 512, 512);
 
-            // Titolo Slide
             tutCtx.fillStyle = '#ffffff'; tutCtx.font = 'bold 24px sans-serif'; tutCtx.textAlign = 'center';
             tutCtx.fillText(slide.title, 256, 55);
 
-            // Rendering Immagine Tutorial mantenendola perfettamente QUADRATA (1:1)
             if (slide.imgObj) {
                 const imgSize = 180; 
                 tutCtx.drawImage(slide.imgObj, 256 - imgSize / 2, 95, imgSize, imgSize);
             }
 
-            // Testo Istruzioni
             tutCtx.fillStyle = '#cccccc'; tutCtx.font = '16px sans-serif'; tutCtx.textAlign = 'center';
             wrapTextCentrato(tutCtx, slide.text, 256, 315, 420, 24);
 
-            // Tasto "PROSEGUI" Blu (Interattivo con mappatura UV fissa)
             tutCtx.fillStyle = isHoveringButton ? '#00bcff' : '#0055ff'; 
             tutCtx.fillRect(102, 435, 308, 51);
 
@@ -143,7 +127,6 @@
             tutorialTexture.needsUpdate = true;
         }
 
-        // Caricamento immagini tutorial
         let loadedImagesCount = 0;
         tutorialSlides.forEach((slide) => {
             const img = new Image();
@@ -151,12 +134,9 @@
             img.onload = () => {
                 slide.imgObj = img;
                 loadedImagesCount++;
-                if (loadedImagesCount === tutorialSlides.length) {
-                    disegnaTutorialHUD();
-                }
+                if (loadedImagesCount === tutorialSlides.length) disegnaTutorialHUD();
             };
         });
-
 
         // -----------------------------------------------------------------
         // CONFIGURAZIONE LOCATION POINTER (TAPPA 1)
@@ -182,7 +162,6 @@
         const totalObjectsToInspect = 3;
         let taskCompleted = false;
 
-
         // -----------------------------------------------------------------
         // CREAZIONE SCHEDA OBIETTIVO (Fissa nello Spazio 3D)
         // -----------------------------------------------------------------
@@ -204,33 +183,30 @@
             
             if (taskCompleted) {
                 objCtx.strokeStyle = '#00ff66'; objCtx.lineWidth = 6; objCtx.strokeRect(0, 0, 512, 320);
-                objCtx.fillStyle = '#00ff66'; objCtx.font = 'bold 24px sans-serif'; objCtx.fillText("✔ OBIETTIVO COMPLETATO", 40, 60);
+                objCtx.fillStyle = '#00ff66'; objCtx.font = 'bold 24px sans-serif'; objCtx.textAlign = "left"; objCtx.fillText("✔ OBIETTIVO COMPLETATO", 40, 60);
                 objCtx.fillStyle = '#ffffff'; objCtx.font = '18px sans-serif'; objCtx.fillText("Tutti i DPI sul banco sono stati verificati.", 40, 130);
                 objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 16px sans-serif'; objCtx.fillText("PROSSIMA AREA DI ADDESTRAMENTO SBLOCCATA", 40, 240);
             } else {
                 objCtx.strokeStyle = 'rgba(0, 210, 255, 0.5)'; objCtx.lineWidth = 6; objCtx.strokeRect(0, 0, 512, 320);
-                objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 22px sans-serif'; objCtx.fillText("OBIETTIVO: ISPEZIONE DPI", 40, 60);
+                objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 22px sans-serif'; objCtx.textAlign = "left"; objCtx.fillText("OBIETTIVO: ISPEZIONE DPI", 40, 60);
                 objCtx.fillStyle = '#cccccc'; objCtx.font = '16px sans-serif';
-                
-                // CORREZIONE: Coordinata X impostata a 40 per allinearsi perfettamente a sinistra con Titolo e Footer
                 wrapTextCentrato(objCtx, "Seleziona ed apri la scheda informativa di tutti e tre i dispositivi di protezione presenti sul tavolo per verificarne la conformità tecnica prima di iniziare i lavori.", 40, 110, 432, 26);
-                
                 objCtx.fillStyle = '#ffffff'; objCtx.font = 'bold 18px sans-serif'; objCtx.fillText(`DPI Ispezionati: ${inspectedObjects.size} / ${totalObjectsToInspect}`, 40, 260);
             }
             objTexture.needsUpdate = true;
         }
 
-
         // -----------------------------------------------------------------
-        // CONFIGURAZIONE SCHEDA INFORMATIVA DPI (Fissa sul Visore)
+        // SCHEDA INFORMATIVA E LOGICA NUOVO ASSET .GLB (TAVOLO + DPI)
         // -----------------------------------------------------------------
         let isInfoPanelOpen = false; let currentHoverObject = null; let currentAttachedObject = null; 
 
-        const ppeDati = [
-            { id: "casco", url: 'assets/safety/casco.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5), title: "Casco di Sicurezza", info: "Protegge il capo da urti accidentali e dalla caduta dall'alto di materiali. Ispeziona regolarmente per crepe." },
-            { id: "imbragatura", url: 'assets/safety/imbragatura.glb', pos: new THREE.Vector3(0, 0.92, -1.5), title: "Imbragatura Anticaduta", info: "Dispositivo salvavita obbligatorio per lavori operativi oltre i 2 metri d'altezza. Controlla i punti di aggancio." },
-            { id: "scarpe", url: 'assets/safety/scarpe.glb', pos: new THREE.Vector3(0.6, 0.85, -1.5), title: "Scarpe Tecniche", info: "Puntale rinforzato in acciaio contro schiazziamenti accidentali e suola antiscivolo. Obbligatorie in cantiere." }
-        ];
+        // Nuova struttura dati basata sui NOMI DELLE MESH da Blender
+        const ppeDati = {
+            "Caschetto": { id: "casco", title: "Caschetto di Sicurezza", info: "Protegge il capo da urti accidentali e dalla caduta dall'alto di materiali. Ispeziona regolarmente per crepe." },
+            "Guanti": { id: "guanti", title: "Guanti Protettivi", info: "Proteggono le mani da tagli, abrasioni e rischi chimici. Assicurati di scegliere il modello adeguato al rischio." },
+            "Occhiali": { id: "occhiali", title: "Occhiali di Sicurezza", info: "Riparano gli occhi da schegge, polvere e schizzi di sostanze pericolose. Verifica che le lenti siano perfettamente intatte." }
+        };
 
         const infoCanvas = document.createElement('canvas'); infoCanvas.width = 400; infoCanvas.height = 300;
         const infoCtx = infoCanvas.getContext('2d'); const infoTexture = new THREE.CanvasTexture(infoCanvas);
@@ -256,23 +232,44 @@
             infoTexture.needsUpdate = true; 
         }
 
-        // Caricamento modelli .GLB
+        // CARICAMENTO DELL'ASSET UNICO (TAVOLO + MESH)
+        let tavoloModel = null;
         const gltfLoader = new GLTFLoader();
-        ppeDati.forEach((data) => {
-            gltfLoader.load(data.url, (gltf) => {
-                const model = gltf.scene; model.position.copy(data.pos);
-                model.traverse((child) => {
-                    if (child.isMesh) {
-                        child.userData.isInteractable = true; child.userData.id = data.id; 
-                        child.userData.title = data.title; child.userData.info = data.info;
-                        interactables.push(child); 
+        
+        gltfLoader.load('assets/tavolo.glb', (gltf) => {
+            tavoloModel = gltf.scene;
+            // Posizioniamo il tavolo di fronte all'utente (regola z o y a seconda dell'origine impostata su Blender)
+            tavoloModel.position.set(0, 0, -1.5); 
+            
+            tavoloModel.traverse((child) => {
+                if (child.isMesh) {
+                    // Controlla se il nome della mesh corrisponde alle chiavi previste
+                    for (const key in ppeDati) {
+                        if (child.name.includes(key)) {
+                            const data = ppeDati[key];
+                            
+                            child.userData.isInteractable = true; 
+                            child.userData.id = data.id; 
+                            child.userData.title = data.title; 
+                            child.userData.info = data.info;
+                            
+                            // Clona il materiale per permettere l'highlight emissivo indipendente dal resto del tavolo
+                            if (child.material) {
+                                child.material = child.material.clone();
+                            }
+                            
+                            interactables.push(child); 
+                        }
                     }
-                });
-                scene.add(model);
-            }, null, (error) => { console.error(error); });
-        });
+                }
+            });
+            scene.add(tavoloModel);
+        }, null, (error) => { console.error("Errore nel caricamento di tavolo.glb:", error); });
 
-        // Teletrasporto standard
+
+        // -----------------------------------------------------------------
+        // SETUP TELETRASPORTO, CONTROLLER & LASER
+        // -----------------------------------------------------------------
         const teleportHeight = 0.6; const teleportRadius = 0.25; 
         const teleportGeo = new THREE.CylinderGeometry(teleportRadius, teleportRadius, teleportHeight, 32, 1, true).translate(0, teleportHeight / 2, 0); 
         const teleportMat = new THREE.ShaderMaterial({
@@ -283,7 +280,6 @@
         });
         const teleportMarker = new THREE.Mesh(teleportGeo, teleportMat); teleportMarker.visible = false; scene.add(teleportMarker);
 
-        // Setup Controller & Laser
         const controller1 = renderer.xr.getController(0); const controller2 = renderer.xr.getController(1);
         cameraRig.add(controller1); cameraRig.add(controller2);
 
@@ -313,7 +309,6 @@
         controller1.addEventListener('selectstart', onTriggerStart); controller1.addEventListener('selectend', onTriggerEnd);
         controller2.addEventListener('selectstart', onTriggerStart); controller2.addEventListener('selectend', onTriggerEnd);
 
-
         // -----------------------------------------------------------------
         // LOOP ANIMAZIONE PRINCIPALE & LOGICA DEI FRAME
         // -----------------------------------------------------------------
@@ -331,7 +326,6 @@
                 currentHoverObject = null;
             }
 
-            // Animazione Pointer post-tutorial
             if (!isTutorialActive && !stage1Triggered) {
                 stageMarkerMat.opacity = 0.3 + Math.sin(time * 2) * 0.4;
                 stageTriangle.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
@@ -361,19 +355,16 @@
 
                     let currentRayLength = MAX_LASER_RANGE;
 
-                    // Raycasting Tutorial
                     if (isTutorialActive) {
                         const tutIntersects = raycaster.intersectObject(tutorialMesh);
                         if (tutIntersects.length > 0) {
                             currentRayLength = tutIntersects[0].distance;
                             const uv = tutIntersects[0].uv;
-                            if (uv.x >= 0.2 && uv.x <= 0.8 && uv.y >= 0.05 && uv.y <= 0.15) {
-                                hoveringThisFrame = true;
-                            }
+                            if (uv.x >= 0.2 && uv.x <= 0.8 && uv.y >= 0.05 && uv.y <= 0.15) hoveringThisFrame = true;
                         }
                         line.scale.z = currentRayLength;
                     } else {
-                        // Raycasting Mondo di Gioco Standard
+                        // Collisioni con DPI (Oggetti interattivi)
                         const objIntersects = raycaster.intersectObjects(interactables);
                         if (objIntersects.length > 0) {
                             currentHoverObject = objIntersects[0].object; currentRayLength = objIntersects[0].distance; 
@@ -382,14 +373,19 @@
                             }
                         }
 
-                        const teleportIntersects = raycaster.intersectObjects([floor, table]);
+                        // Genera array per collisione teletrasporto, includendo il tavolo se è stato caricato
+                        const teleportTargets = [floor];
+                        if (tavoloModel) teleportTargets.push(tavoloModel);
+
+                        const teleportIntersects = raycaster.intersectObjects(teleportTargets, true);
                         if (teleportIntersects.length > 0) {
                             const hitObj = teleportIntersects[0].object; const hitDist = teleportIntersects[0].distance;
                             if (isTeleportMode && controller === activeTeleportController) {
-                                if (hitObj === floor) {
+                                if (hitObj.name === 'floor') {
                                     currentRayLength = hitDist; teleportPoint.copy(teleportIntersects[0].point);
                                     teleportMarker.position.copy(teleportPoint).y = 0.001; teleportMarker.visible = true;
-                                } else if (hitObj === table) {
+                                } else {
+                                    // Colpito il tavolo: blocca il raggio e nascondi il marker del teletrasporto (non si attraversa)
                                     currentRayLength = hitDist; teleportMarker.visible = false; 
                                 }
                             } else if (!objIntersects.length) { currentRayLength = hitDist; }
@@ -398,17 +394,15 @@
                         line.scale.z = currentRayLength; 
                     }
 
-                    // Logica Input Tasti (A / X)
+                    // Input A/X per Tutorial e ispezione DPI
                     if (source.gamepad) {
                         const buttonPressed = source.gamepad.buttons[4]?.pressed || false; const hand = source.handedness;
                         if (buttonPressed && !prevButtonsState[hand]) {
-                            
                             if (isTutorialActive) {
                                 if (isHoveringButton) {
                                     tutorialIndex++;
-                                    if (tutorialIndex < tutorialSlides.length) {
-                                        disegnaTutorialHUD();
-                                    } else {
+                                    if (tutorialIndex < tutorialSlides.length) disegnaTutorialHUD();
+                                    else {
                                         isTutorialActive = false;
                                         tutorialGroup.visible = false;
                                         locationPointerGroup.visible = true; 
@@ -425,7 +419,6 @@
                                         }
                                     } else {
                                         disegnaSchedaMinimalSolida(data.title, data.info); infoGroup.visible = true; isInfoPanelOpen = true; currentAttachedObject = currentHoverObject;
-                                        
                                         if (stage1Triggered && !taskCompleted) {
                                             inspectedObjects.add(data.id);
                                             if (inspectedObjects.size === totalObjectsToInspect) taskCompleted = true;
