@@ -571,21 +571,44 @@
         this.tutorialStep = 1;
         this.showTutorialCard();
       },
+      // Chiamato da controller-input quando A/X viene premuto durante il tutorial
+      advanceTutorial: function () {
+        if (this.tutorialStep <= 0) return;
+        if (this.tutorialStep < 3) {
+          this.tutorialStep++;
+          this.updateTutorialTexture();
+        } else {
+          // Ultima slide: chiudi il tutorial
+          this.hideCard();
+          this.tutorialStep = 0;
+        }
+      },
+      isTutorialActive: function () {
+        return this.tutorialStep > 0 && this.activeCard && this.activeCard.getAttribute('id') === 'tutorial-card';
+      },
+      updateTutorialTexture: function () {
+        if (!this.activeCard) return;
+        const canvas = this.drawTutorialCanvas(this.tutorialStep);
+        const texture = new THREE.CanvasTexture(canvas);
+        // Animazione di transizione slide (piccolo shrink + grow)
+        this.activeCard.setAttribute('animation', 'property: scale; to: 0.85 0.85 0.85; dur: 100; easing: easeInQuad');
+        setTimeout(() => {
+          const mesh = this.activeCard && this.activeCard.getObject3D('mesh');
+          if (mesh && mesh.material) {
+            mesh.material.map = texture;
+            mesh.material.needsUpdate = true;
+          }
+          if (this.activeCard) {
+            this.activeCard.setAttribute('animation', 'property: scale; to: 1 1 1; dur: 200; easing: easeOutBack');
+          }
+        }, 110);
+      },
       showTutorialCard: function () {
         const camera = document.querySelector('#camera');
         if (!camera) return;
 
         const canvas = this.drawTutorialCanvas(this.tutorialStep);
         const texture = new THREE.CanvasTexture(canvas);
-
-        if (this.activeCard && this.activeCard.getAttribute('id') === 'tutorial-card') {
-          const mesh = this.activeCard.getObject3D('mesh');
-          if (mesh && mesh.material) {
-            mesh.material.map = texture;
-            mesh.material.needsUpdate = true;
-          }
-          return;
-        }
 
         this.hideCard();
 
@@ -607,20 +630,9 @@
           }
         });
 
-        card.addEventListener('click', (evt) => {
-          const intersection = evt.detail.intersection;
-          if (intersection && intersection.uv) {
-            const uv = intersection.uv;
-            if (uv.x >= 0.72 && uv.x <= 0.95 && uv.y >= 0.05 && uv.y <= 0.18) {
-              if (this.tutorialStep < 3) {
-                this.tutorialStep++;
-                this.showTutorialCard();
-              } else {
-                this.hideCard();
-                this.tutorialStep = 0;
-              }
-            }
-          }
+        // Qualsiasi click sulla card avanza il tutorial (nessun controllo UV preciso)
+        card.addEventListener('click', () => {
+          this.advanceTutorial();
         });
 
         camera.appendChild(card);
@@ -769,10 +781,17 @@
         this.el.addEventListener('click', () => { this.handleInput(); });
       },
       handleInput: function () {
+        // Se il tutorial è attivo, A/X avanzano la slide (non la chiudono)
+        if (this.system.isTutorialActive()) {
+          this.system.advanceTutorial();
+          return;
+        }
+        // Se una scheda informativa è aperta, A/X la chiudono
         if (this.system.isCardVisible()) {
           this.system.animateAndHide();
           return;
         }
+        // Altrimenti, cerca un oggetto puntato e apri la sua scheda
         const intersectedObjects = document.querySelectorAll('.interattivo');
         let activeObject = null;
         intersectedObjects.forEach(obj => {
