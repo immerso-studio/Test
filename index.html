@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Training VR Industriale - Unico Asset Tavolo</title>
+    <title>Training VR Industriale - Macchinario e Collisioni</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     </style>
@@ -48,20 +48,48 @@
         dirLight.position.set(3, 10, 3);
         scene.add(dirLight);
 
-        // Pavimento (Target principale del teletrasporto)
+        // Pavimento
         const floor = new THREE.Mesh(
             new THREE.PlaneGeometry(40, 40),
             new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 })
         );
         floor.rotation.x = -Math.PI / 2;
-        floor.name = 'floor';
+        floor.name = 'floor'; // NOME FONDAMENTALE PER IL TELETRASPORTO
         scene.add(floor);
 
         const grid = new THREE.GridHelper(40, 40, 0x333333, 0x222222);
         grid.position.y = 0.001;
         scene.add(grid);
 
+        // Banco da lavoro
+        const table = new THREE.Mesh(
+            new THREE.BoxGeometry(2.2, 0.8, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0x2b2b2b })
+        );
+        table.position.set(0, 0.4, -1.5);
+        table.name = 'table';
+        scene.add(table);
+
         const interactables = [];
+        
+        // Array degli ostacoli per fermare il raggio laser di movimento
+        const environmentColliders = [floor, table]; 
+
+        // -----------------------------------------------------------------
+        // CARICAMENTO MACCHINARIO (TAPPA 2) E OSTACOLO FISICO
+        // -----------------------------------------------------------------
+        const gltfLoader = new GLTFLoader();
+        
+        gltfLoader.load('assets/macchinario.glb', (gltf) => {
+            const machineModel = gltf.scene;
+            machineModel.position.set(0, 0, -3.5); // Dietro il tavolo
+            machineModel.name = 'macchinario';
+            scene.add(machineModel);
+            
+            // Aggiungiamo il macchinario alla lista degli oggetti che bloccano il laser
+            environmentColliders.push(machineModel);
+        }, undefined, (error) => { console.warn("Modello macchinario non trovato, procedo senza:", error); });
+
 
         // -----------------------------------------------------------------
         // CONFIGURAZIONE DI STATO E DATI DEL TUTORIAL
@@ -129,41 +157,54 @@
 
         let loadedImagesCount = 0;
         tutorialSlides.forEach((slide) => {
-            const img = new Image();
-            img.src = slide.imgSrc;
+            const img = new Image(); img.src = slide.imgSrc;
             img.onload = () => {
-                slide.imgObj = img;
-                loadedImagesCount++;
+                slide.imgObj = img; loadedImagesCount++;
                 if (loadedImagesCount === tutorialSlides.length) disegnaTutorialHUD();
             };
         });
 
+
         // -----------------------------------------------------------------
-        // CONFIGURAZIONE LOCATION POINTER (TAPPA 1)
+        // CONFIGURAZIONE LOCATION POINTERS (Tappa 1 e Tappa 2)
         // -----------------------------------------------------------------
+        const stageMarkerMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+        const coneGeo = new THREE.ConeGeometry(0.08, 0.2, 4).rotateX(Math.PI); 
+
+        // TAPPA 1: Banco da lavoro
         const targetStage1 = new THREE.Vector3(0, 0.01, -0.6); 
         let stage1Triggered = false;
+        const locationPointerGroup1 = new THREE.Group();
+        locationPointerGroup1.position.copy(targetStage1);
+        locationPointerGroup1.visible = false; 
+        scene.add(locationPointerGroup1);
+        
+        const stageMarker1 = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.35, 32).rotateX(-Math.PI / 2), stageMarkerMat);
+        const stageTriangle1 = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0x00d2ff }));
+        stageTriangle1.position.y = 0.5; 
+        locationPointerGroup1.add(stageMarker1); locationPointerGroup1.add(stageTriangle1);
 
-        const locationPointerGroup = new THREE.Group();
-        locationPointerGroup.position.copy(targetStage1);
-        locationPointerGroup.visible = false; 
-        scene.add(locationPointerGroup);
+        // TAPPA 2: Macchinario
+        const targetStage2 = new THREE.Vector3(0, 0.01, -2.4); 
+        let stage2Triggered = false;
+        const locationPointerGroup2 = new THREE.Group();
+        locationPointerGroup2.position.copy(targetStage2);
+        locationPointerGroup2.visible = false; // Apparirà solo completati i DPI
+        scene.add(locationPointerGroup2);
 
-        const stageMarkerMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
-        const stageMarker = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.35, 32).rotateX(-Math.PI / 2), stageMarkerMat);
-        locationPointerGroup.add(stageMarker);
+        const stageMarker2 = stageMarker1.clone();
+        const stageTriangle2 = stageTriangle1.clone();
+        locationPointerGroup2.add(stageMarker2); locationPointerGroup2.add(stageTriangle2);
 
-        const coneGeo = new THREE.ConeGeometry(0.08, 0.2, 4).rotateX(Math.PI); 
-        const stageTriangle = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0x00d2ff }));
-        stageTriangle.position.y = 0.5; 
-        locationPointerGroup.add(stageTriangle);
 
+        // Variabili Logica DPI
         const inspectedObjects = new Set(); 
         const totalObjectsToInspect = 3;
         let taskCompleted = false;
 
+
         // -----------------------------------------------------------------
-        // CREAZIONE SCHEDA OBIETTIVO (Fissa nello Spazio 3D)
+        // CREAZIONE SCHEDA OBIETTIVO (Fissa sul Banco)
         // -----------------------------------------------------------------
         const objCanvas = document.createElement('canvas'); objCanvas.width = 512; objCanvas.height = 320;
         const objCtx = objCanvas.getContext('2d');
@@ -172,7 +213,6 @@
         const objPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ map: objTexture, side: THREE.DoubleSide, transparent: true }));
         const objectiveGroup = new THREE.Group();
         objectiveGroup.add(objPanelMesh);
-        
         scene.add(objectiveGroup); 
         objectiveGroup.position.set(0, 1.45, -1.96); 
         objectiveGroup.visible = false; 
@@ -183,12 +223,12 @@
             
             if (taskCompleted) {
                 objCtx.strokeStyle = '#00ff66'; objCtx.lineWidth = 6; objCtx.strokeRect(0, 0, 512, 320);
-                objCtx.fillStyle = '#00ff66'; objCtx.font = 'bold 24px sans-serif'; objCtx.textAlign = "left"; objCtx.fillText("✔ OBIETTIVO COMPLETATO", 40, 60);
+                objCtx.fillStyle = '#00ff66'; objCtx.font = 'bold 24px sans-serif'; objCtx.textAlign = 'left'; objCtx.fillText("✔ OBIETTIVO COMPLETATO", 40, 60);
                 objCtx.fillStyle = '#ffffff'; objCtx.font = '18px sans-serif'; objCtx.fillText("Tutti i DPI sul banco sono stati verificati.", 40, 130);
-                objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 16px sans-serif'; objCtx.fillText("PROSSIMA AREA DI ADDESTRAMENTO SBLOCCATA", 40, 240);
+                objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 16px sans-serif'; objCtx.fillText("RAGGIUNGI IL MACCHINARIO SUL RETRO", 40, 240);
             } else {
                 objCtx.strokeStyle = 'rgba(0, 210, 255, 0.5)'; objCtx.lineWidth = 6; objCtx.strokeRect(0, 0, 512, 320);
-                objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 22px sans-serif'; objCtx.textAlign = "left"; objCtx.fillText("OBIETTIVO: ISPEZIONE DPI", 40, 60);
+                objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 22px sans-serif'; objCtx.textAlign = 'left'; objCtx.fillText("OBIETTIVO: ISPEZIONE DPI", 40, 60);
                 objCtx.fillStyle = '#cccccc'; objCtx.font = '16px sans-serif';
                 wrapTextCentrato(objCtx, "Seleziona ed apri la scheda informativa di tutti e tre i dispositivi di protezione presenti sul tavolo per verificarne la conformità tecnica prima di iniziare i lavori.", 40, 110, 432, 26);
                 objCtx.fillStyle = '#ffffff'; objCtx.font = 'bold 18px sans-serif'; objCtx.fillText(`DPI Ispezionati: ${inspectedObjects.size} / ${totalObjectsToInspect}`, 40, 260);
@@ -196,17 +236,17 @@
             objTexture.needsUpdate = true;
         }
 
+
         // -----------------------------------------------------------------
-        // SCHEDA INFORMATIVA E LOGICA NUOVO ASSET .GLB (TAVOLO + DPI)
+        // CONFIGURAZIONE SCHEDA INFORMATIVA DPI
         // -----------------------------------------------------------------
         let isInfoPanelOpen = false; let currentHoverObject = null; let currentAttachedObject = null; 
 
-        // Nuova struttura dati basata sui NOMI DELLE MESH da Blender
-        const ppeDati = {
-            "Caschetto": { id: "casco", title: "Caschetto di Sicurezza", info: "Protegge il capo da urti accidentali e dalla caduta dall'alto di materiali. Ispeziona regolarmente per crepe." },
-            "Guanti": { id: "guanti", title: "Guanti Protettivi", info: "Proteggono le mani da tagli, abrasioni e rischi chimici. Assicurati di scegliere il modello adeguato al rischio." },
-            "Occhiali": { id: "occhiali", title: "Occhiali di Sicurezza", info: "Riparano gli occhi da schegge, polvere e schizzi di sostanze pericolose. Verifica che le lenti siano perfettamente intatte." }
-        };
+        const ppeDati = [
+            { id: "casco", url: 'assets/safety/casco.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5), title: "Casco di Sicurezza", info: "Protegge il capo da urti accidentali e dalla caduta dall'alto di materiali. Ispeziona regolarmente per crepe." },
+            { id: "imbragatura", url: 'assets/safety/imbragatura.glb', pos: new THREE.Vector3(0, 0.92, -1.5), title: "Imbragatura Anticaduta", info: "Dispositivo salvavita obbligatorio per lavori operativi oltre i 2 metri d'altezza. Controlla i punti di aggancio." },
+            { id: "scarpe", url: 'assets/safety/scarpe.glb', pos: new THREE.Vector3(0.6, 0.85, -1.5), title: "Scarpe Tecniche", info: "Puntale rinforzato in acciaio contro schiacciamenti accidentali e suola antiscivolo. Obbligatorie in cantiere." }
+        ];
 
         const infoCanvas = document.createElement('canvas'); infoCanvas.width = 400; infoCanvas.height = 300;
         const infoCtx = infoCanvas.getContext('2d'); const infoTexture = new THREE.CanvasTexture(infoCanvas);
@@ -217,7 +257,7 @@
         function disegnaSchedaMinimalSolida(titolo, descrizione) {
             infoCtx.fillStyle = '#121212'; infoCtx.fillRect(0, 0, 400, 300);
             infoCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; infoCtx.lineWidth = 4; infoCtx.strokeRect(0, 0, 400, 300);
-            infoCtx.fillStyle = '#ffffff'; infoCtx.font = '500 22px sans-serif'; infoCtx.fillText(titolo.toUpperCase(), 30, 50);
+            infoCtx.fillStyle = '#ffffff'; infoCtx.font = '500 22px sans-serif'; infoCtx.textAlign = 'left'; infoCtx.fillText(titolo.toUpperCase(), 30, 50);
             infoCtx.fillStyle = '#aaaaaa'; infoCtx.font = '300 16px sans-serif';
             
             const words = descrizione.split(' '); let line = ''; let y = 95;
@@ -232,44 +272,21 @@
             infoTexture.needsUpdate = true; 
         }
 
-        // CARICAMENTO DELL'ASSET UNICO (TAVOLO + MESH)
-        let tavoloModel = null;
-        const gltfLoader = new GLTFLoader();
-        
-        gltfLoader.load('assets/tavolo.glb', (gltf) => {
-            tavoloModel = gltf.scene;
-            // Posizioniamo il tavolo di fronte all'utente (regola z o y a seconda dell'origine impostata su Blender)
-            tavoloModel.position.set(0, 0, -1.5); 
-            
-            tavoloModel.traverse((child) => {
-                if (child.isMesh) {
-                    // Controlla se il nome della mesh corrisponde alle chiavi previste
-                    for (const key in ppeDati) {
-                        if (child.name.includes(key)) {
-                            const data = ppeDati[key];
-                            
-                            child.userData.isInteractable = true; 
-                            child.userData.id = data.id; 
-                            child.userData.title = data.title; 
-                            child.userData.info = data.info;
-                            
-                            // Clona il materiale per permettere l'highlight emissivo indipendente dal resto del tavolo
-                            if (child.material) {
-                                child.material = child.material.clone();
-                            }
-                            
-                            interactables.push(child); 
-                        }
+        ppeDati.forEach((data) => {
+            gltfLoader.load(data.url, (gltf) => {
+                const model = gltf.scene; model.position.copy(data.pos);
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        child.userData.isInteractable = true; child.userData.id = data.id; 
+                        child.userData.title = data.title; child.userData.info = data.info;
+                        interactables.push(child); 
                     }
-                }
-            });
-            scene.add(tavoloModel);
-        }, null, (error) => { console.error("Errore nel caricamento di tavolo.glb:", error); });
+                });
+                scene.add(model);
+            }, null, (error) => { console.error("DPI Mancante:", error); });
+        });
 
-
-        // -----------------------------------------------------------------
-        // SETUP TELETRASPORTO, CONTROLLER & LASER
-        // -----------------------------------------------------------------
+        // Teletrasporto standard
         const teleportHeight = 0.6; const teleportRadius = 0.25; 
         const teleportGeo = new THREE.CylinderGeometry(teleportRadius, teleportRadius, teleportHeight, 32, 1, true).translate(0, teleportHeight / 2, 0); 
         const teleportMat = new THREE.ShaderMaterial({
@@ -280,6 +297,7 @@
         });
         const teleportMarker = new THREE.Mesh(teleportGeo, teleportMat); teleportMarker.visible = false; scene.add(teleportMarker);
 
+        // Setup Controller & Laser
         const controller1 = renderer.xr.getController(0); const controller2 = renderer.xr.getController(1);
         cameraRig.add(controller1); cameraRig.add(controller2);
 
@@ -309,6 +327,7 @@
         controller1.addEventListener('selectstart', onTriggerStart); controller1.addEventListener('selectend', onTriggerEnd);
         controller2.addEventListener('selectstart', onTriggerStart); controller2.addEventListener('selectend', onTriggerEnd);
 
+
         // -----------------------------------------------------------------
         // LOOP ANIMAZIONE PRINCIPALE & LOGICA DEI FRAME
         // -----------------------------------------------------------------
@@ -326,18 +345,35 @@
                 currentHoverObject = null;
             }
 
+            // --- ANIMAZIONE E LOGICA PUNTEGGI (TAPPA 1) ---
             if (!isTutorialActive && !stage1Triggered) {
                 stageMarkerMat.opacity = 0.3 + Math.sin(time * 2) * 0.4;
-                stageTriangle.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
+                stageTriangle1.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
 
                 const userPos2D = new THREE.Vector2(cameraRig.position.x, cameraRig.position.z);
                 const targetPos2D = new THREE.Vector2(targetStage1.x, targetStage1.z);
                 
                 if (userPos2D.distanceTo(targetPos2D) < 0.5) {
                     stage1Triggered = true;
-                    locationPointerGroup.visible = false; 
+                    locationPointerGroup1.visible = false; 
                     disegnaSchedaObiettivo3D();
                     objectiveGroup.visible = true; 
+                }
+            }
+
+            // --- ANIMAZIONE E LOGICA PUNTEGGI (TAPPA 2) ---
+            if (taskCompleted && !stage2Triggered) {
+                locationPointerGroup2.visible = true;
+                stageMarkerMat.opacity = 0.3 + Math.sin(time * 2) * 0.4;
+                stageTriangle2.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
+
+                const userPos2D = new THREE.Vector2(cameraRig.position.x, cameraRig.position.z);
+                const targetPos2D2 = new THREE.Vector2(targetStage2.x, targetStage2.z);
+
+                if (userPos2D.distanceTo(targetPos2D2) < 0.5) {
+                    stage2Triggered = true;
+                    locationPointerGroup2.visible = false;
+                    objectiveGroup.visible = false; // Nascondo la vecchia scheda arrivati alla nuova postazione
                 }
             }
 
@@ -360,11 +396,12 @@
                         if (tutIntersects.length > 0) {
                             currentRayLength = tutIntersects[0].distance;
                             const uv = tutIntersects[0].uv;
-                            if (uv.x >= 0.2 && uv.x <= 0.8 && uv.y >= 0.05 && uv.y <= 0.15) hoveringThisFrame = true;
+                            if (uv.x >= 0.2 && uv.x <= 0.8 && uv.y >= 0.05 && uv.y <= 0.15) {
+                                hoveringThisFrame = true;
+                            }
                         }
                         line.scale.z = currentRayLength;
                     } else {
-                        // Collisioni con DPI (Oggetti interattivi)
                         const objIntersects = raycaster.intersectObjects(interactables);
                         if (objIntersects.length > 0) {
                             currentHoverObject = objIntersects[0].object; currentRayLength = objIntersects[0].distance; 
@@ -373,39 +410,47 @@
                             }
                         }
 
-                        // Genera array per collisione teletrasporto, includendo il tavolo se è stato caricato
-                        const teleportTargets = [floor];
-                        if (tavoloModel) teleportTargets.push(tavoloModel);
-
-                        const teleportIntersects = raycaster.intersectObjects(teleportTargets, true);
+                        // AGGIORNAMENTO: Teletrasporto bloccato da tavolo e macchinario
+                        const teleportIntersects = raycaster.intersectObjects(environmentColliders, true);
                         if (teleportIntersects.length > 0) {
-                            const hitObj = teleportIntersects[0].object; const hitDist = teleportIntersects[0].distance;
+                            const hitObj = teleportIntersects[0].object; 
+                            const hitDist = teleportIntersects[0].distance;
+                            
                             if (isTeleportMode && controller === activeTeleportController) {
                                 if (hitObj.name === 'floor') {
-                                    currentRayLength = hitDist; teleportPoint.copy(teleportIntersects[0].point);
-                                    teleportMarker.position.copy(teleportPoint).y = 0.001; teleportMarker.visible = true;
+                                    // Valido: Crea il marker di teletrasporto
+                                    currentRayLength = hitDist; 
+                                    teleportPoint.copy(teleportIntersects[0].point);
+                                    teleportMarker.position.copy(teleportPoint).y = 0.001; 
+                                    teleportMarker.visible = true;
                                 } else {
-                                    // Colpito il tavolo: blocca il raggio e nascondi il marker del teletrasporto (non si attraversa)
-                                    currentRayLength = hitDist; teleportMarker.visible = false; 
+                                    // Ostacolo (Tavolo / Macchinario): Ferma il laser ma disattiva il marker
+                                    currentRayLength = hitDist; 
+                                    teleportMarker.visible = false; 
                                 }
-                            } else if (!objIntersects.length) { currentRayLength = hitDist; }
-                        } else if (isTeleportMode && controller === activeTeleportController) { teleportMarker.visible = false; }
+                            } else if (!objIntersects.length) { 
+                                currentRayLength = hitDist; // Riposo: Il laser tocca l'ostacolo
+                            }
+                        } else if (isTeleportMode && controller === activeTeleportController) { 
+                            teleportMarker.visible = false; 
+                        }
 
                         line.scale.z = currentRayLength; 
                     }
 
-                    // Input A/X per Tutorial e ispezione DPI
                     if (source.gamepad) {
                         const buttonPressed = source.gamepad.buttons[4]?.pressed || false; const hand = source.handedness;
                         if (buttonPressed && !prevButtonsState[hand]) {
+                            
                             if (isTutorialActive) {
                                 if (isHoveringButton) {
                                     tutorialIndex++;
-                                    if (tutorialIndex < tutorialSlides.length) disegnaTutorialHUD();
-                                    else {
+                                    if (tutorialIndex < tutorialSlides.length) {
+                                        disegnaTutorialHUD();
+                                    } else {
                                         isTutorialActive = false;
                                         tutorialGroup.visible = false;
-                                        locationPointerGroup.visible = true; 
+                                        locationPointerGroup1.visible = true; 
                                     }
                                 }
                             } else {
@@ -419,10 +464,15 @@
                                         }
                                     } else {
                                         disegnaSchedaMinimalSolida(data.title, data.info); infoGroup.visible = true; isInfoPanelOpen = true; currentAttachedObject = currentHoverObject;
+                                        
                                         if (stage1Triggered && !taskCompleted) {
                                             inspectedObjects.add(data.id);
-                                            if (inspectedObjects.size === totalObjectsToInspect) taskCompleted = true;
-                                            disegnaSchedaObiettivo3D(); 
+                                            if (inspectedObjects.size === totalObjectsToInspect) {
+                                                taskCompleted = true;
+                                                disegnaSchedaObiettivo3D(); // Aggiorna UI a 'Completato' (che a sua volta attiva il trigger Stage 2)
+                                            } else {
+                                                disegnaSchedaObiettivo3D(); // Aggiorna solo il contatore
+                                            }
                                         }
                                     }
                                 } else if (isInfoPanelOpen) {
