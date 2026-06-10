@@ -32,9 +32,13 @@
             document.fonts.add(loaded);
             fontReady = true;
             disegnaSchedaObiettivoDPI();
+            disegnaSchedaObiettivoMacchinario();
+            disegnaSchedaEmergenza();
         }).catch(() => {
             fontReady = true;
             disegnaSchedaObiettivoDPI();
+            disegnaSchedaObiettivoMacchinario();
+            disegnaSchedaEmergenza();
         });
 
         // -----------------------------------------------------------------
@@ -45,7 +49,7 @@
         scene.fog = new THREE.FogExp2(0x1a1a1a, 0.06);
 
         const cameraRig = new THREE.Group();
-        cameraRig.position.set(0, 0, 2); 
+        cameraRig.position.set(0, 0, 2);
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
         cameraRig.add(camera);
         scene.add(cameraRig);
@@ -55,18 +59,34 @@
         // -----------------------------------------------------------------
         const audioListener = new THREE.AudioListener();
         camera.add(audioListener);
+
         const rumoreAudio = new THREE.Audio(audioListener);
         const audioLoader = new THREE.AudioLoader();
         audioLoader.load('assets/audio/rumore.mp3', (buffer) => {
             rumoreAudio.setBuffer(buffer);
             rumoreAudio.setLoop(true);
             rumoreAudio.setVolume(0.5);
-        }, undefined, (err) => console.warn("Audio rumore.mp3 non trovato. Ignorare se non caricato."));
+        }, undefined, (err) => console.warn("Audio rumore.mp3 non trovato."));
+
+        // Suono di selezione
+        const selectAudio = new THREE.Audio(audioListener);
+        audioLoader.load('assets/audio/select.mp3', (buffer) => {
+            selectAudio.setBuffer(buffer);
+            selectAudio.setLoop(false);
+            selectAudio.setVolume(0.8);
+        }, undefined, (err) => console.warn("Audio select.mp3 non trovato."));
+
+        function playSelectSound() {
+            if (selectAudio.buffer && !selectAudio.isPlaying) {
+                selectAudio.stop();
+                selectAudio.play();
+            }
+        }
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.xr.enabled = true; 
+        renderer.xr.enabled = true;
         document.body.appendChild(renderer.domElement);
         document.body.appendChild(VRButton.createButton(renderer));
 
@@ -81,7 +101,7 @@
             new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 })
         );
         floor.rotation.x = -Math.PI / 2;
-        floor.name = 'floor'; 
+        floor.name = 'floor';
         scene.add(floor);
 
         const grid = new THREE.GridHelper(40, 40, 0x333333, 0x222222);
@@ -98,13 +118,13 @@
         scene.add(table);
 
         const interactables = [];
-        const environmentColliders = [floor, table]; 
+        const environmentColliders = [floor, table];
 
         // -----------------------------------------------------------------
         // CARICAMENTO MACCHINARIO E OSTACOLO FISICO
         // -----------------------------------------------------------------
         const gltfLoader = new GLTFLoader();
-        
+
         const componentiMacchinario = {
             "Cabina_di_controllo_metallo": { id: "cabina", title: "Cabina di Controllo", info: "Pannello principale per la gestione della macchina. Verificare che non vi siano spie d'allarme attive." },
             "Tasto_rosso": { id: "tasto_emergenza", title: "Pulsante di Emergenza", info: "Blocca istantaneamente l'alimentazione in caso di pericolo. Assicurati che sia ben visibile e non ostruito." }
@@ -112,7 +132,7 @@
 
         gltfLoader.load('assets/macchinario.glb', (gltf) => {
             const machineModel = gltf.scene;
-            machineModel.position.set(-1, 0, -3.5); 
+            machineModel.position.set(-1, 0, -3.5);
             machineModel.name = 'macchinario';
             scene.add(machineModel);
             environmentColliders.push(machineModel);
@@ -120,16 +140,15 @@
             machineModel.traverse((child) => {
                 if (child.isMesh && componentiMacchinario[child.name]) {
                     const datiComponente = componentiMacchinario[child.name];
-                    child.userData.isInteractable = true; 
-                    child.userData.id = datiComponente.id; 
-                    child.userData.title = datiComponente.title; 
+                    child.userData.isInteractable = true;
+                    child.userData.id = datiComponente.id;
+                    child.userData.title = datiComponente.title;
                     child.userData.info = datiComponente.info;
                     child.userData.isFaseMacchinario = true;
                     interactables.push(child);
                 }
             });
         }, undefined, (error) => { console.warn("Modello macchinario non trovato, procedo senza:", error); });
-
 
         // -----------------------------------------------------------------
         // CONFIGURAZIONE DI STATO E DATI DEL TUTORIAL
@@ -149,13 +168,13 @@
         const tutorialTexture = new THREE.CanvasTexture(tutorialCanvas);
 
         const tutorialMesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(0.5, 0.5), 
+            new THREE.PlaneGeometry(0.5, 0.5),
             new THREE.MeshBasicMaterial({ map: tutorialTexture, side: THREE.DoubleSide, transparent: true })
         );
         const tutorialGroup = new THREE.Group();
         tutorialGroup.add(tutorialMesh);
         camera.add(tutorialGroup);
-        tutorialGroup.position.set(0, 0, -0.65); 
+        tutorialGroup.position.set(0, 0, -0.65);
 
         function wrapTextCentrato(ctx, text, x, y, maxWidth, lineHeight) {
             const words = text.split(' '); let line = '';
@@ -165,17 +184,6 @@
                     ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight;
                 } else { line = testLine; }
             } ctx.fillText(line, x, y);
-        }
-
-        function wrapTextLeft(ctx, text, x, y, maxWidth, lineHeight) {
-            const words = text.split(' '); let line = '';
-            for (let n = 0; n < words.length; n++) {
-                let testLine = line + words[n] + ' ';
-                if (ctx.measureText(testLine).width > maxWidth && n > 0) {
-                    ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight;
-                } else { line = testLine; }
-            } ctx.fillText(line, x, y);
-            return y;
         }
 
         function disegnaTutorialHUD() {
@@ -190,14 +198,14 @@
             tutCtx.fillText(slide.title, 256, 55);
 
             if (slide.imgObj) {
-                const imgSize = 180; 
+                const imgSize = 180;
                 tutCtx.drawImage(slide.imgObj, 256 - imgSize / 2, 95, imgSize, imgSize);
             }
 
             tutCtx.fillStyle = '#cccccc'; tutCtx.font = '16px sans-serif'; tutCtx.textAlign = 'center';
             wrapTextCentrato(tutCtx, slide.text, 256, 315, 420, 24);
 
-            tutCtx.fillStyle = isHoveringButton ? '#00bcff' : '#0055ff'; 
+            tutCtx.fillStyle = isHoveringButton ? '#00bcff' : '#0055ff';
             tutCtx.fillRect(102, 435, 308, 51);
 
             tutCtx.fillStyle = '#ffffff'; tutCtx.font = 'bold 18px sans-serif';
@@ -216,30 +224,30 @@
         });
 
         // -----------------------------------------------------------------
-        // CONFIGURAZIONE LOCATION POINTERS 
+        // CONFIGURAZIONE LOCATION POINTERS
         // -----------------------------------------------------------------
         const stageMarkerMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
-        const coneGeo = new THREE.ConeGeometry(0.08, 0.2, 4).rotateX(Math.PI); 
+        const coneGeo = new THREE.ConeGeometry(0.08, 0.2, 4).rotateX(Math.PI);
 
         // TAPPA 1: Banco da lavoro
-        const targetStage1 = new THREE.Vector3(0, 0.01, -0.6); 
+        const targetStage1 = new THREE.Vector3(0, 0.01, -0.6);
         let stage1Triggered = false;
         const locationPointerGroup1 = new THREE.Group();
         locationPointerGroup1.position.copy(targetStage1);
-        locationPointerGroup1.visible = false; 
+        locationPointerGroup1.visible = false;
         scene.add(locationPointerGroup1);
-        
+
         const stageMarker1 = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.35, 32).rotateX(-Math.PI / 2), stageMarkerMat);
         const stageTriangle1 = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: 0x00d2ff }));
-        stageTriangle1.position.y = 0.5; 
+        stageTriangle1.position.y = 0.5;
         locationPointerGroup1.add(stageMarker1); locationPointerGroup1.add(stageTriangle1);
 
         // TAPPA 2: Macchinario
-        const targetStage2 = new THREE.Vector3(3, 0.01, -2.4); 
+        const targetStage2 = new THREE.Vector3(3.30, 0.01, -3.30);
         let stage2Triggered = false;
         const locationPointerGroup2 = new THREE.Group();
         locationPointerGroup2.position.copy(targetStage2);
-        locationPointerGroup2.visible = false; 
+        locationPointerGroup2.visible = false;
         scene.add(locationPointerGroup2);
 
         const stageMarker2 = stageMarker1.clone();
@@ -252,7 +260,7 @@
         let emergenzaRisolta = false;
         const locationPointerGroup3 = new THREE.Group();
         locationPointerGroup3.position.copy(targetStage3);
-        locationPointerGroup3.visible = false; 
+        locationPointerGroup3.visible = false;
         scene.add(locationPointerGroup3);
 
         const stageMarker3 = stageMarker1.clone();
@@ -260,7 +268,7 @@
         locationPointerGroup3.add(stageMarker3); locationPointerGroup3.add(stageTriangle3);
 
         // Variabili Logica DPI (Fase 1)
-        const inspectedObjects = new Set(); 
+        const inspectedObjects = new Set();
         const totalObjectsToInspect = 3;
         let taskCompleted = false;
 
@@ -271,14 +279,30 @@
 
         // Dati DPI per la scheda
         const ppeDati = [
-            { id: "caschetto", url: 'assets/safety/caschetto.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5), title: "Caschetto di Sicurezza", info: "Protegge il capo da urti accidentali e caduta di materiali. Controlla sempre l'integrità della calotta prima dell'uso." },
-            { id: "occhiali", url: 'assets/safety/occhiali.glb', pos: new THREE.Vector3(0, 0.8, -1.5), title: "Occhiali Protettivi", info: "Ripara gli occhi da schegge, polvere e schizzi di liquidi pericolosi. Verifica che le lenti siano intatte e pulite." },
-            { id: "guanti", url: 'assets/safety/guanti.glb', pos: new THREE.Vector3(0.6, 0.8, -1.5), title: "Guanti da Lavoro", info: "Garantiscono una presa sicura e proteggono le mani da tagli o abrasioni. Assicurati che non presentino strappi o usura." }
+            { id: "caschetto", url: 'assets/safety/caschetto.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5), title: "Caschetto di Sicurezza", info: "Protegge il capo da urti accidentali e caduta di materiali. Controlla sempre l'integrità della calotta prima dell'uso.", imgSrc: 'assets/safety/img/1.webp', imgObj: null },
+            { id: "occhiali", url: 'assets/safety/occhiali.glb', pos: new THREE.Vector3(0, 0.8, -1.5), title: "Occhiali Protettivi", info: "Ripara gli occhi da schegge, polvere e schizzi di liquidi pericolosi. Verifica che le lenti siano intatte e pulite.", imgSrc: 'assets/safety/img/2.webp', imgObj: null },
+            { id: "guanti", url: 'assets/safety/guanti.glb', pos: new THREE.Vector3(0.6, 0.8, -1.5), title: "Guanti da Lavoro", info: "Garantiscono una presa sicura e proteggono le mani da tagli o abrasioni. Assicurati che non presentino strappi o usura.", imgSrc: 'assets/safety/img/3.webp', imgObj: null }
+        ];
+
+        // Caricamento immagini DPI
+        ppeDati.forEach(dpi => {
+            const img = new Image();
+            img.src = dpi.imgSrc;
+            img.onload = () => {
+                dpi.imgObj = img;
+                disegnaSchedaObiettivoDPI();
+            };
+            img.onerror = () => console.warn(`Immagine DPI non trovata: ${dpi.imgSrc}`);
+        });
+
+        // Dati per le card del macchinario
+        const macchinarioCardsData = [
+            { id: "cabina", title: "Cabina di Controllo", info: "Pannello principale per la gestione della macchina. Verificare che non vi siano spie d'allarme attive.", icon: '⚙️' },
+            { id: "tasto_emergenza", title: "Pulsante di Emergenza", info: "Blocca istantaneamente l'alimentazione in caso di pericolo. Assicurati che sia ben visibile e non ostruito.", icon: '🔴' }
         ];
 
         // -----------------------------------------------------------------
-        // SCHEDA OBIETTIVO DPI (Fase 1) — Grande pannello fisso nello spazio
-        // Canvas 1024x680 → Mesh 1.5 x 1.0 m
+        // SCHEDA OBIETTIVO DPI (Fase 1) — Grande pannello
         // -----------------------------------------------------------------
         const DPI_CANVAS_W = 1024;
         const DPI_CANVAS_H = 680;
@@ -295,9 +319,48 @@
         const objectiveGroup = new THREE.Group();
         objectiveGroup.add(objPanelMesh);
         scene.add(objectiveGroup);
-        // Posizionato sopra il banco, ben visibile
         objectiveGroup.position.set(0, 1.6, -2.1);
         objectiveGroup.visible = false;
+
+        // -----------------------------------------------------------------
+        // SCHEDA OBIETTIVO MACCHINARIO (Fase 2) — Stesso stile grande
+        // -----------------------------------------------------------------
+        const machCanvas = document.createElement('canvas');
+        machCanvas.width = DPI_CANVAS_W;
+        machCanvas.height = DPI_CANVAS_H;
+        const machCtx = machCanvas.getContext('2d');
+        const machTexture = new THREE.CanvasTexture(machCanvas);
+
+        const machPanelMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.5, 1.0),
+            new THREE.MeshBasicMaterial({ map: machTexture, side: THREE.DoubleSide, transparent: true })
+        );
+        const machObjectiveGroup = new THREE.Group();
+        machObjectiveGroup.add(machPanelMesh);
+        scene.add(machObjectiveGroup);
+        machObjectiveGroup.position.set(3.30, 1.80, -4.30);
+        machObjectiveGroup.rotation.y = 0;
+        machObjectiveGroup.visible = false;
+
+        // -----------------------------------------------------------------
+        // SCHEDA EMERGENZA (Fase 3) — Semplice
+        // -----------------------------------------------------------------
+        const emergCanvas = document.createElement('canvas');
+        emergCanvas.width = DPI_CANVAS_W;
+        emergCanvas.height = DPI_CANVAS_H;
+        const emergCtx = emergCanvas.getContext('2d');
+        const emergTexture = new THREE.CanvasTexture(emergCanvas);
+
+        const emergPanelMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.5, 1.0),
+            new THREE.MeshBasicMaterial({ map: emergTexture, side: THREE.DoubleSide, transparent: true })
+        );
+        const emergGroup = new THREE.Group();
+        emergGroup.add(emergPanelMesh);
+        scene.add(emergGroup);
+        emergGroup.position.set(3, 1.8, -5.8);
+        emergGroup.rotation.y = 0;
+        emergGroup.visible = false;
 
         function roundRect(ctx, x, y, w, h, r) {
             ctx.beginPath();
@@ -313,75 +376,53 @@
             ctx.closePath();
         }
 
+        // Disegna scheda DPI (con check al completamento)
         function disegnaSchedaObiettivoDPI() {
             const W = DPI_CANVAS_W;
             const H = DPI_CANVAS_H;
             const font = fontReady ? "'Inter Tight'" : 'sans-serif';
 
             objCtx.clearRect(0, 0, W, H);
-
-            // Sfondo principale — grigio chiaro come nello screenshot
-            objCtx.fillStyle = '#e8e8e8';
+            objCtx.fillStyle = '#CCCCCC';
             roundRect(objCtx, 0, 0, W, H, 24);
             objCtx.fill();
 
             if (taskCompleted) {
-                // ---- STATO COMPLETATO ----
-                // Bordo verde sottile
-                objCtx.strokeStyle = '#22c55e';
-                objCtx.lineWidth = 6;
-                roundRect(objCtx, 3, 3, W - 6, H - 6, 22);
-                objCtx.stroke();
-
-                // Badge livello
+                // Check grande
                 objCtx.fillStyle = '#22c55e';
-                roundRect(objCtx, 40, 32, 160, 42, 21);
-                objCtx.fill();
-                objCtx.fillStyle = '#ffffff';
-                objCtx.font = `600 20px ${font}`;
-                objCtx.textAlign = 'left';
-                objCtx.fillText('Livello 1', 70, 59);
+                objCtx.font = `100px ${font}`;
+                objCtx.textAlign = 'center';
+                objCtx.fillText('✔', W / 2, H / 2 - 40);
 
-                objCtx.fillStyle = '#111111';
-                objCtx.font = `700 56px ${font}`;
-                objCtx.fillText('Ispezione DPI', 40, 145);
-
-                objCtx.fillStyle = '#22c55e';
-                objCtx.font = `500 26px ${font}`;
-                objCtx.fillText('✔ Tutti i DPI verificati — procedi al macchinario', 40, 190);
-
+                // Testo completamento
+                objCtx.font = `700 52px ${font}`;
+                objCtx.fillText('Procedi al prossimo livello', W / 2, H / 2 + 50);
             } else {
-                // ---- STATO IN CORSO ----
-                // Badge livello verde
+                const badgeW = 155, badgeH = 42;
                 objCtx.fillStyle = '#22c55e';
-                roundRect(objCtx, 40, 32, 155, 42, 21);
+                roundRect(objCtx, 40, 32, badgeW, badgeH, 21);
                 objCtx.fill();
                 objCtx.fillStyle = '#ffffff';
                 objCtx.font = `600 20px ${font}`;
                 objCtx.textAlign = 'left';
-                objCtx.fillText('Livello 1', 68, 59);
+                const measure2 = objCtx.measureText('Livello 1');
+                objCtx.fillText('Livello 1', 40 + (badgeW - measure2.width) / 2, 59);
 
-                // Titolo
                 objCtx.fillStyle = '#111111';
                 objCtx.font = `700 58px ${font}`;
                 objCtx.fillText('Ispezione DPI', 40, 145);
 
-                // Sottotitolo
                 objCtx.fillStyle = '#444444';
                 objCtx.font = `400 26px ${font}`;
                 objCtx.fillText('Seleziona gli oggetti presenti sul tavolo', 40, 185);
 
-                // Linea divisoria sottile
                 objCtx.strokeStyle = '#cccccc';
                 objCtx.lineWidth = 1.5;
                 objCtx.beginPath();
                 objCtx.moveTo(40, 210);
                 objCtx.lineTo(W - 40, 210);
                 objCtx.stroke();
-            }
 
-            // ---- 3 CARD DPI ----
-            if (!taskCompleted) {
                 const cardW = 286;
                 const cardH = 400;
                 const cardY = 228;
@@ -392,12 +433,10 @@
                     const cx = cardStartX + i * (cardW + cardGap);
                     const isSelected = inspectedObjects.has(dpi.id);
 
-                    // Sfondo card — bianco sporco, leggermente più chiaro dell'outer bg
-                    objCtx.fillStyle = '#f4f4f4';
+                    objCtx.fillStyle = '#E6E6E6';
                     roundRect(objCtx, cx, cardY, cardW, cardH, 16);
                     objCtx.fill();
 
-                    // Bordo card — verde se selezionato, trasparente altrimenti
                     if (isSelected) {
                         objCtx.strokeStyle = '#22c55e';
                         objCtx.lineWidth = 3;
@@ -408,58 +447,68 @@
                     roundRect(objCtx, cx, cardY, cardW, cardH, 16);
                     objCtx.stroke();
 
-                    // Area immagine oggetto — rettangolo scuro
                     objCtx.fillStyle = '#1a1a1a';
                     roundRect(objCtx, cx + 12, cardY + 12, cardW - 24, 210, 10);
                     objCtx.fill();
 
-                    // Icona oggetto (placeholder emoji / lettera)
-                    const icons = ['🪖', '🥽', '🧤'];
-                    objCtx.font = `72px sans-serif`;
-                    objCtx.textAlign = 'center';
-                    objCtx.fillText(icons[i], cx + cardW / 2, cardY + 137);
+                    objCtx.save();
+                    roundRect(objCtx, cx + 12, cardY + 12, cardW - 24, 210, 10);
+                    objCtx.clip();
+                    if (dpi.imgObj && dpi.imgObj.complete) {
+                        const imgW = dpi.imgObj.width;
+                        const imgH = dpi.imgObj.height;
+                        const maxW = cardW - 24;
+                        const maxH = 210;
+                        const scale = Math.min(maxW / imgW, maxH / imgH);
+                        const drawW = imgW * scale;
+                        const drawH = imgH * scale;
+                        const drawX = cx + 12 + (maxW - drawW) / 2;
+                        const drawY = cardY + 12 + (maxH - drawH) / 2;
+                        objCtx.drawImage(dpi.imgObj, drawX, drawY, drawW, drawH);
+                    } else {
+                        const icons = ['🪖', '🥽', '🧤'];
+                        objCtx.font = '72px sans-serif';
+                        objCtx.textAlign = 'center';
+                        objCtx.fillText(icons[i], cx + cardW / 2, cardY + 137);
+                    }
+                    objCtx.restore();
 
-                    // Titolo oggetto
                     objCtx.fillStyle = '#111111';
                     objCtx.font = `700 22px ${font}`;
                     objCtx.textAlign = 'left';
                     objCtx.fillText(dpi.title, cx + 16, cardY + 250);
 
-                    // Descrizione breve
-                    objCtx.fillStyle = '#666666';
+                    objCtx.fillStyle = '#000000';
                     objCtx.font = `400 16px ${font}`;
                     const descWords = dpi.info.split(' ');
                     let line = ''; let ty = cardY + 278;
+                    const maxTextY = cardY + 310;
                     for (let n = 0; n < descWords.length; n++) {
                         const testLine = line + descWords[n] + ' ';
                         if (objCtx.measureText(testLine).width > cardW - 32 && n > 0) {
                             objCtx.fillText(line, cx + 16, ty);
                             line = descWords[n] + ' '; ty += 22;
                         } else { line = testLine; }
-                        if (ty > cardY + 348) { line = ''; break; }
+                        if (ty > maxTextY) { line = ''; break; }
                     }
-                    if (line && ty <= cardY + 348) objCtx.fillText(line, cx + 16, ty);
+                    if (line && ty <= maxTextY) objCtx.fillText(line, cx + 16, ty);
 
-                    // Linea divisoria prima del checkbox
                     objCtx.strokeStyle = '#e0e0e0';
                     objCtx.lineWidth = 1;
                     objCtx.beginPath();
-                    objCtx.moveTo(cx + 16, cardY + cardH - 66);
-                    objCtx.lineTo(cx + cardW - 16, cardY + cardH - 66);
+                    objCtx.moveTo(cx + 16, cardY + cardH - 60);
+                    objCtx.lineTo(cx + cardW - 16, cardY + cardH - 60);
                     objCtx.stroke();
 
-                    // Checkbox row
-                    const checkY = cardY + cardH - 48;
+                    const checkY = cardY + cardH - 44;
                     const checkBoxSize = 22;
                     const checkBoxX = cx + 16;
                     const checkBoxCY = checkY + checkBoxSize / 2;
 
                     if (isSelected) {
-                        // Checkbox pieno verde
                         objCtx.fillStyle = '#22c55e';
                         roundRect(objCtx, checkBoxX, checkY, checkBoxSize, checkBoxSize, 6);
                         objCtx.fill();
-                        // Checkmark
                         objCtx.strokeStyle = '#ffffff';
                         objCtx.lineWidth = 3;
                         objCtx.lineCap = 'round';
@@ -469,19 +518,14 @@
                         objCtx.lineTo(checkBoxX + 9, checkBoxCY + 5);
                         objCtx.lineTo(checkBoxX + 17, checkBoxCY - 4);
                         objCtx.stroke();
-
-                        // Label
                         objCtx.fillStyle = '#22c55e';
                         objCtx.font = `600 17px ${font}`;
                         objCtx.textAlign = 'left';
                         objCtx.fillText('Selezionato', checkBoxX + 30, checkY + 16);
                     } else {
-                        // Checkbox vuoto grigio
                         objCtx.fillStyle = '#d4d4d4';
                         roundRect(objCtx, checkBoxX, checkY, checkBoxSize, checkBoxSize, 6);
                         objCtx.fill();
-
-                        // Label
                         objCtx.fillStyle = '#999999';
                         objCtx.font = `500 17px ${font}`;
                         objCtx.textAlign = 'left';
@@ -489,7 +533,6 @@
                     }
                 });
 
-                // Contatore in basso a destra
                 objCtx.fillStyle = '#888888';
                 objCtx.font = `500 20px ${font}`;
                 objCtx.textAlign = 'right';
@@ -499,117 +542,222 @@
             objTexture.needsUpdate = true;
         }
 
-        // Pre-disegna la scheda (verrà richiamata quando il font è pronto)
-        disegnaSchedaObiettivoDPI();
+        // Disegna scheda Macchinario (con check al completamento)
+        function disegnaSchedaObiettivoMacchinario() {
+            const W = DPI_CANVAS_W;
+            const H = DPI_CANVAS_H;
+            const font = fontReady ? "'Inter Tight'" : 'sans-serif';
 
+            machCtx.clearRect(0, 0, W, H);
+            machCtx.fillStyle = '#CCCCCC';
+            roundRect(machCtx, 0, 0, W, H, 24);
+            machCtx.fill();
 
-        // -----------------------------------------------------------------
-        // CREAZIONE SCHEDA OBIETTIVO 2 E 3 (Warning) AL MACCHINARIO
-        // -----------------------------------------------------------------
-        const machObjCanvas = document.createElement('canvas'); machObjCanvas.width = 512; machObjCanvas.height = 320;
-        const machObjCtx = machObjCanvas.getContext('2d');
-        const machObjTexture = new THREE.CanvasTexture(machObjCanvas);
-
-        const machObjPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ map: machObjTexture, side: THREE.DoubleSide, transparent: true }));
-        const machObjectiveGroup = new THREE.Group();
-        machObjectiveGroup.add(machObjPanelMesh);
-        scene.add(machObjectiveGroup); 
-        machObjectiveGroup.position.set(3, 1.8, -3.2); 
-        machObjectiveGroup.rotation.y = -Math.PI / 6; 
-        machObjectiveGroup.visible = false; 
-
-        function disegnaSchedaObiettivoMacchinario3D() {
-            machObjCtx.clearRect(0, 0, 512, 320);
-            machObjCtx.fillStyle = 'rgba(15, 15, 15, 0.95)'; machObjCtx.fillRect(0, 0, 512, 320);
-            
             if (macchinarioTaskCompleted) {
-                machObjCtx.strokeStyle = '#00ff66'; machObjCtx.lineWidth = 6; machObjCtx.strokeRect(0, 0, 512, 320);
-                machObjCtx.fillStyle = '#00ff66'; machObjCtx.font = 'bold 24px sans-serif'; machObjCtx.textAlign = 'left'; machObjCtx.fillText("✔ ISPEZIONE CONCLUSA", 40, 60);
-                machObjCtx.fillStyle = '#ffffff'; machObjCtx.font = '18px sans-serif'; machObjCtx.fillText("Spostati verso la pedana a lato della macchina.", 40, 130);
+                machCtx.fillStyle = '#22c55e';
+                machCtx.font = `100px ${font}`;
+                machCtx.textAlign = 'center';
+                machCtx.fillText('✔', W / 2, H / 2 - 40);
+
+                machCtx.font = `700 52px ${font}`;
+                machCtx.fillText('Procedi al prossimo livello', W / 2, H / 2 + 50);
             } else {
-                machObjCtx.strokeStyle = 'rgba(255, 165, 0, 0.5)'; machObjCtx.lineWidth = 6; machObjCtx.strokeRect(0, 0, 512, 320);
-                machObjCtx.fillStyle = '#ffa500'; machObjCtx.font = 'bold 22px sans-serif'; machObjCtx.textAlign = 'left'; machObjCtx.fillText("OBIETTIVO: VERIFICA MACCHINARIO", 40, 60);
-                machObjCtx.fillStyle = '#cccccc'; machObjCtx.font = '16px sans-serif';
-                wrapTextCentrato(machObjCtx, "Identifica e visualizza le specifiche della Cabina di Controllo e del Tasto Rosso di Emergenza sul macchinario.", 40, 110, 432, 26);
-                machObjCtx.fillStyle = '#ffffff'; machObjCtx.font = 'bold 18px sans-serif'; machObjCtx.fillText(`Componenti Trovati: ${macchinarioInspectedObjects.size} / ${totalMacchinarioObjects}`, 40, 260);
+                const badgeW = 210, badgeH = 42;
+                machCtx.fillStyle = '#22c55e';
+                roundRect(machCtx, 40, 32, badgeW, badgeH, 21);
+                machCtx.fill();
+                machCtx.fillStyle = '#ffffff';
+                machCtx.font = `600 20px ${font}`;
+                machCtx.textAlign = 'left';
+                const measureBadge = machCtx.measureText('Livello 2');
+                machCtx.fillText('Livello 2', 40 + (badgeW - measureBadge.width) / 2, 59);
+
+                machCtx.fillStyle = '#111111';
+                machCtx.font = `700 58px ${font}`;
+                machCtx.fillText('Verifica Macchinario', 40, 145);
+
+                machCtx.fillStyle = '#444444';
+                machCtx.font = `400 26px ${font}`;
+                machCtx.fillText('Seleziona i componenti del macchinario', 40, 185);
+
+                machCtx.strokeStyle = '#cccccc';
+                machCtx.lineWidth = 1.5;
+                machCtx.beginPath();
+                machCtx.moveTo(40, 210);
+                machCtx.lineTo(W - 40, 210);
+                machCtx.stroke();
+
+                const cardW = 420;
+                const cardH = 400;
+                const cardY = 228;
+                const cardStartX = 80;
+                const cardGap = 40;
+
+                macchinarioCardsData.forEach((comp, i) => {
+                    const cx = cardStartX + i * (cardW + cardGap);
+                    const isSelected = macchinarioInspectedObjects.has(comp.id);
+
+                    machCtx.fillStyle = '#E6E6E6';
+                    roundRect(machCtx, cx, cardY, cardW, cardH, 16);
+                    machCtx.fill();
+
+                    if (isSelected) {
+                        machCtx.strokeStyle = '#22c55e';
+                        machCtx.lineWidth = 3;
+                    } else {
+                        machCtx.strokeStyle = 'rgba(0,0,0,0.08)';
+                        machCtx.lineWidth = 1.5;
+                    }
+                    roundRect(machCtx, cx, cardY, cardW, cardH, 16);
+                    machCtx.stroke();
+
+                    machCtx.fillStyle = '#1a1a1a';
+                    roundRect(machCtx, cx + 12, cardY + 12, cardW - 24, 210, 10);
+                    machCtx.fill();
+
+                    machCtx.font = '80px sans-serif';
+                    machCtx.fillStyle = '#ffffff';
+                    machCtx.textAlign = 'center';
+                    machCtx.fillText(comp.icon, cx + cardW / 2, cardY + 150);
+
+                    machCtx.fillStyle = '#111111';
+                    machCtx.font = `700 22px ${font}`;
+                    machCtx.textAlign = 'left';
+                    machCtx.fillText(comp.title, cx + 16, cardY + 250);
+
+                    machCtx.fillStyle = '#000000';
+                    machCtx.font = `400 16px ${font}`;
+                    const descWords = comp.info.split(' ');
+                    let line = ''; let ty = cardY + 278;
+                    const maxTextY = cardY + 310;
+                    for (let n = 0; n < descWords.length; n++) {
+                        const testLine = line + descWords[n] + ' ';
+                        if (machCtx.measureText(testLine).width > cardW - 32 && n > 0) {
+                            machCtx.fillText(line, cx + 16, ty);
+                            line = descWords[n] + ' '; ty += 22;
+                        } else { line = testLine; }
+                        if (ty > maxTextY) { line = ''; break; }
+                    }
+                    if (line && ty <= maxTextY) machCtx.fillText(line, cx + 16, ty);
+
+                    machCtx.strokeStyle = '#e0e0e0';
+                    machCtx.lineWidth = 1;
+                    machCtx.beginPath();
+                    machCtx.moveTo(cx + 16, cardY + cardH - 60);
+                    machCtx.lineTo(cx + cardW - 16, cardY + cardH - 60);
+                    machCtx.stroke();
+
+                    const checkY = cardY + cardH - 44;
+                    const checkBoxSize = 22;
+                    const checkBoxX = cx + 16;
+                    const checkBoxCY = checkY + checkBoxSize / 2;
+
+                    if (isSelected) {
+                        machCtx.fillStyle = '#22c55e';
+                        roundRect(machCtx, checkBoxX, checkY, checkBoxSize, checkBoxSize, 6);
+                        machCtx.fill();
+                        machCtx.strokeStyle = '#ffffff';
+                        machCtx.lineWidth = 3;
+                        machCtx.lineCap = 'round';
+                        machCtx.lineJoin = 'round';
+                        machCtx.beginPath();
+                        machCtx.moveTo(checkBoxX + 5, checkBoxCY);
+                        machCtx.lineTo(checkBoxX + 9, checkBoxCY + 5);
+                        machCtx.lineTo(checkBoxX + 17, checkBoxCY - 4);
+                        machCtx.stroke();
+                        machCtx.fillStyle = '#22c55e';
+                        machCtx.font = `600 17px ${font}`;
+                        machCtx.textAlign = 'left';
+                        machCtx.fillText('Selezionato', checkBoxX + 30, checkY + 16);
+                    } else {
+                        machCtx.fillStyle = '#d4d4d4';
+                        roundRect(machCtx, checkBoxX, checkY, checkBoxSize, checkBoxSize, 6);
+                        machCtx.fill();
+                        machCtx.fillStyle = '#999999';
+                        machCtx.font = `500 17px ${font}`;
+                        machCtx.textAlign = 'left';
+                        machCtx.fillText('Da selezionare', checkBoxX + 30, checkY + 16);
+                    }
+                });
+
+                machCtx.fillStyle = '#888888';
+                machCtx.font = `500 20px ${font}`;
+                machCtx.textAlign = 'right';
+                machCtx.fillText(`${macchinarioInspectedObjects.size} / ${totalMacchinarioObjects} componenti verificati`, W - 40, H - 20);
             }
-            machObjTexture.needsUpdate = true;
+
+            machTexture.needsUpdate = true;
         }
-        disegnaSchedaObiettivoMacchinario3D(); 
 
-        // -- SCHEDA WARNING (Fase 3) --
-        const warningCanvas = document.createElement('canvas'); warningCanvas.width = 512; warningCanvas.height = 320;
-        const warningCtx = warningCanvas.getContext('2d');
-        const warningTexture = new THREE.CanvasTexture(warningCanvas);
+        // NUOVA FUNZIONE SCHEDA EMERGENZA (Livello 3) – semplice, senza card
+        function disegnaSchedaEmergenza() {
+            const W = DPI_CANVAS_W;
+            const H = DPI_CANVAS_H;
+            const font = fontReady ? "'Inter Tight'" : 'sans-serif';
 
-        const warningPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ map: warningTexture, side: THREE.DoubleSide, transparent: true }));
-        const warningGroup = new THREE.Group();
-        warningGroup.add(warningPanelMesh);
-        scene.add(warningGroup); 
-        warningGroup.position.set(3, 1.8, -5.8);
-        warningGroup.rotation.y = -Math.PI / 10;
-        warningGroup.visible = false; 
+            emergCtx.clearRect(0, 0, W, H);
+            emergCtx.fillStyle = '#CCCCCC';
+            roundRect(emergCtx, 0, 0, W, H, 24);
+            emergCtx.fill();
 
-        function disegnaSchedaWarning() {
-            warningCtx.clearRect(0, 0, 512, 320);
-            
             if (emergenzaRisolta) {
-                warningCtx.fillStyle = 'rgba(10, 25, 10, 0.95)'; warningCtx.fillRect(0, 0, 512, 320);
-                warningCtx.strokeStyle = '#00ff66'; warningCtx.lineWidth = 6; warningCtx.strokeRect(0, 0, 512, 320);
-                warningCtx.fillStyle = '#00ff66'; warningCtx.font = 'bold 24px sans-serif'; warningCtx.textAlign = 'left'; warningCtx.fillText("✔ MACCHINARIO IN SICUREZZA", 40, 60);
-                warningCtx.fillStyle = '#ffffff'; warningCtx.font = '18px sans-serif';
-                wrapTextCentrato(warningCtx, "Hai interrotto correttamente l'alimentazione premendo il tasto d'emergenza. Addestramento completato.", 40, 120, 432, 26);
+                // Stato completato: check + testo
+                emergCtx.fillStyle = '#22c55e';
+                emergCtx.font = `100px ${font}`;
+                emergCtx.textAlign = 'center';
+                emergCtx.fillText('✔', W / 2, H / 2 - 40);
+
+                emergCtx.font = `700 52px ${font}`;
+                emergCtx.fillText('Procedi al prossimo livello', W / 2, H / 2 + 50);
             } else {
-                warningCtx.fillStyle = 'rgba(30, 0, 0, 0.95)'; warningCtx.fillRect(0, 0, 512, 320);
-                warningCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)'; warningCtx.lineWidth = 6; warningCtx.strokeRect(0, 0, 512, 320);
-                warningCtx.fillStyle = '#ff0000'; warningCtx.font = 'bold 24px sans-serif'; warningCtx.textAlign = 'left'; warningCtx.fillText("⚠ ATTENZIONE: PERICOLO", 40, 60);
-                warningCtx.fillStyle = '#ffffff'; warningCtx.font = '18px sans-serif';
-                wrapTextCentrato(warningCtx, "Il macchinario è in avaria e va spento immediatamente!", 40, 110, 432, 26);
+                // Badge Livello 3
+                const badgeW = 210, badgeH = 42;
+                emergCtx.fillStyle = '#ef4444';
+                roundRect(emergCtx, 40, 32, badgeW, badgeH, 21);
+                emergCtx.fill();
+                emergCtx.fillStyle = '#ffffff';
+                emergCtx.font = `600 20px ${font}`;
+                emergCtx.textAlign = 'left';
+                const measureBadge = emergCtx.measureText('Livello 3');
+                emergCtx.fillText('Livello 3', 40 + (badgeW - measureBadge.width) / 2, 59);
+
+                // Titolo
+                emergCtx.fillStyle = '#111111';
+                emergCtx.font = `700 58px ${font}`;
+                emergCtx.textAlign = 'center';
+                emergCtx.fillText('Emergenza Macchinario', W / 2, 145);
+
+                // Simbolo di pericolo grande
+                emergCtx.fillStyle = '#ef4444';
+                emergCtx.font = `150px sans-serif`;
+                emergCtx.textAlign = 'center';
+                emergCtx.fillText('⚠️', W / 2, H / 2 - 20);
+
+                // Istruzione in rosso
+                emergCtx.fillStyle = '#ef4444';
+                emergCtx.font = `700 32px ${font}`;
+                emergCtx.textAlign = 'center';
+                wrapTextCentrato(emergCtx, 'Premi il pulsante di emergenza rosso sul macchinario', W / 2, H / 2 + 100, 800, 42);
             }
-            warningTexture.needsUpdate = true;
+
+            emergTexture.needsUpdate = true;
         }
 
+        // Inizializzazione disegni
+        disegnaSchedaObiettivoDPI();
+        disegnaSchedaObiettivoMacchinario();
+        disegnaSchedaEmergenza();
 
-        // -----------------------------------------------------------------
-        // SCHEDA INFORMATIVA (usata solo per Fase 2 e 3 — macchinario)
-        // -----------------------------------------------------------------
-        let isInfoPanelOpen = false;
-        let currentHoverObject = null;
-        let currentAttachedObject = null; 
-
-        const infoCanvas = document.createElement('canvas'); infoCanvas.width = 400; infoCanvas.height = 300;
-        const infoCtx = infoCanvas.getContext('2d'); const infoTexture = new THREE.CanvasTexture(infoCanvas);
-        const infoPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.45), new THREE.MeshBasicMaterial({ map: infoTexture, side: THREE.DoubleSide }));
-        const infoGroup = new THREE.Group(); infoGroup.add(infoPanelMesh); infoGroup.visible = false; 
-        camera.add(infoGroup); infoGroup.position.set(0, 0, -0.8);
-
-        function disegnaSchedaMinimalSolida(titolo, descrizione) {
-            infoCtx.fillStyle = '#121212'; infoCtx.fillRect(0, 0, 400, 300);
-            infoCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; infoCtx.lineWidth = 4; infoCtx.strokeRect(0, 0, 400, 300);
-            infoCtx.fillStyle = '#ffffff'; infoCtx.font = '500 22px sans-serif'; infoCtx.textAlign = 'left'; infoCtx.fillText(titolo.toUpperCase(), 30, 50);
-            infoCtx.fillStyle = '#aaaaaa'; infoCtx.font = '300 16px sans-serif';
-            
-            const words = descrizione.split(' '); let line = ''; let y = 95;
-            for (let n = 0; n < words.length; n++) {
-                let testLine = line + words[n] + ' ';
-                if (infoCtx.measureText(testLine).width > 340 && n > 0) {
-                    infoCtx.fillText(line, 30, y); line = words[n] + ' '; y += 24;
-                } else { line = testLine; }
-            } infoCtx.fillText(line, 30, y);
-
-            infoCtx.fillStyle = '#666666'; infoCtx.font = 'bold 12px sans-serif'; infoCtx.fillText("PREMI A / X PER CHIUDERE", 30, 265);
-            infoTexture.needsUpdate = true; 
-        }
-
+        // Caricamento modelli 3D DPI
         ppeDati.forEach((data) => {
             gltfLoader.load(data.url, (gltf) => {
                 const model = gltf.scene; model.position.copy(data.pos);
                 model.traverse((child) => {
                     if (child.isMesh) {
-                        child.userData.isInteractable = true; child.userData.id = data.id; 
+                        child.userData.isInteractable = true; child.userData.id = data.id;
                         child.userData.title = data.title; child.userData.info = data.info;
-                        child.userData.isFaseMacchinario = false; 
-                        interactables.push(child); 
+                        child.userData.isFaseMacchinario = false;
+                        interactables.push(child);
                     }
                 });
                 scene.add(model);
@@ -617,13 +765,13 @@
         });
 
         // Setup Teletrasporto, Controller & Laser
-        const teleportHeight = 0.6; const teleportRadius = 0.25; 
-        const teleportGeo = new THREE.CylinderGeometry(teleportRadius, teleportRadius, teleportHeight, 32, 1, true).translate(0, teleportHeight / 2, 0); 
+        const teleportHeight = 0.6; const teleportRadius = 0.25;
+        const teleportGeo = new THREE.CylinderGeometry(teleportRadius, teleportRadius, teleportHeight, 32, 1, true).translate(0, teleportHeight / 2, 0);
         const teleportMat = new THREE.ShaderMaterial({
             uniforms: { uColor: { value: new THREE.Color(0x00d2ff) } },
             vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
             fragmentShader: `varying vec2 vUv; uniform vec3 uColor; void main() { float alpha = 1.0 - vUv.y; alpha = pow(alpha, 1.5); gl_FragColor = vec4(uColor, alpha); }`,
-            transparent: true, side: THREE.DoubleSide, depthWrite: false       
+            transparent: true, side: THREE.DoubleSide, depthWrite: false
         });
         const teleportMarker = new THREE.Mesh(teleportGeo, teleportMat); teleportMarker.visible = false; scene.add(teleportMarker);
 
@@ -641,9 +789,9 @@
 
         let isTeleportMode = false; let activeTeleportController = null; let teleportPoint = new THREE.Vector3();
 
-        function onTriggerStart(event) { 
-            if (isTutorialActive) return; 
-            activeTeleportController = event.target; isTeleportMode = true; 
+        function onTriggerStart(event) {
+            if (isTutorialActive) return;
+            activeTeleportController = event.target; isTeleportMode = true;
         }
 
         function onTriggerEnd(event) {
@@ -656,19 +804,19 @@
         controller1.addEventListener('selectstart', onTriggerStart); controller1.addEventListener('selectend', onTriggerEnd);
         controller2.addEventListener('selectstart', onTriggerStart); controller2.addEventListener('selectend', onTriggerEnd);
 
-
         // -----------------------------------------------------------------
-        // LOOP ANIMAZIONE PRINCIPALE
+        // LOOP ANIMAZIONE PRINCIPALE (senza pannello informativo)
         // -----------------------------------------------------------------
         const raycaster = new THREE.Raycaster();
         const workingMatrix = new THREE.Matrix4();
         const MAX_LASER_RANGE = 10;
-        const prevButtonsState = { left: false, right: false }; 
-        
+        const prevButtonsState = { left: false, right: false };
+        let currentHoverObject = null; // solo per highlight
+
         renderer.setAnimationLoop(() => {
             const session = renderer.xr.getSession();
-            const time = performance.now() * 0.003; 
-            
+            const time = performance.now() * 0.003;
+
             if (currentHoverObject && currentHoverObject.material && currentHoverObject.material.emissive) {
                 currentHoverObject.material.emissive.setHex(0x000000);
                 currentHoverObject = null;
@@ -681,12 +829,12 @@
 
                 const userPos2D = new THREE.Vector2(cameraRig.position.x, cameraRig.position.z);
                 const targetPos2D = new THREE.Vector2(targetStage1.x, targetStage1.z);
-                
+
                 if (userPos2D.distanceTo(targetPos2D) < 0.5) {
                     stage1Triggered = true;
-                    locationPointerGroup1.visible = false; 
+                    locationPointerGroup1.visible = false;
                     disegnaSchedaObiettivoDPI();
-                    objectiveGroup.visible = true; 
+                    objectiveGroup.visible = true;
                 }
             }
 
@@ -702,7 +850,7 @@
                 if (userPos2D.distanceTo(targetPos2D2) < 0.5) {
                     stage2Triggered = true;
                     locationPointerGroup2.visible = false;
-                    objectiveGroup.visible = false; 
+                    objectiveGroup.visible = false;
                     machObjectiveGroup.visible = true;
                 }
             }
@@ -720,10 +868,8 @@
                     stage3Triggered = true;
                     locationPointerGroup3.visible = false;
                     machObjectiveGroup.visible = false;
-                    
-                    disegnaSchedaWarning();
-                    warningGroup.visible = true;
-                    
+                    emergGroup.visible = true;
+
                     if (rumoreAudio.buffer && !rumoreAudio.isPlaying) {
                         rumoreAudio.play();
                     }
@@ -736,7 +882,7 @@
                 for (const source of session.inputSources) {
                     const controller = source.handedness === 'right' ? controller1 : controller2;
                     const line = controller.getObjectByName('line');
-                    line.scale.z = MAX_LASER_RANGE; 
+                    line.scale.z = MAX_LASER_RANGE;
 
                     workingMatrix.identity().extractRotation(controller.matrixWorld);
                     raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
@@ -757,35 +903,35 @@
                     } else {
                         const objIntersects = raycaster.intersectObjects(interactables);
                         if (objIntersects.length > 0) {
-                            currentHoverObject = objIntersects[0].object; currentRayLength = objIntersects[0].distance; 
+                            currentHoverObject = objIntersects[0].object; currentRayLength = objIntersects[0].distance;
                             if (!isTeleportMode && currentHoverObject.material && currentHoverObject.material.emissive) {
-                                currentHoverObject.material.emissive.setHex(0x333333); 
+                                currentHoverObject.material.emissive.setHex(0x333333);
                             }
                         }
 
                         const teleportIntersects = raycaster.intersectObjects(environmentColliders, true);
                         if (teleportIntersects.length > 0) {
-                            const hitObj = teleportIntersects[0].object; 
+                            const hitObj = teleportIntersects[0].object;
                             const hitDist = teleportIntersects[0].distance;
-                            
+
                             if (isTeleportMode && controller === activeTeleportController) {
                                 if (hitObj.name === 'floor') {
-                                    currentRayLength = hitDist; 
+                                    currentRayLength = hitDist;
                                     teleportPoint.copy(teleportIntersects[0].point);
-                                    teleportMarker.position.copy(teleportPoint).y = 0.001; 
+                                    teleportMarker.position.copy(teleportPoint).y = 0.001;
                                     teleportMarker.visible = true;
                                 } else {
-                                    currentRayLength = hitDist; 
-                                    teleportMarker.visible = false; 
+                                    currentRayLength = hitDist;
+                                    teleportMarker.visible = false;
                                 }
-                            } else if (!objIntersects.length) { 
-                                currentRayLength = hitDist; 
+                            } else if (!objIntersects.length) {
+                                currentRayLength = hitDist;
                             }
-                        } else if (isTeleportMode && controller === activeTeleportController) { 
-                            teleportMarker.visible = false; 
+                        } else if (isTeleportMode && controller === activeTeleportController) {
+                            teleportMarker.visible = false;
                         }
 
-                        line.scale.z = currentRayLength; 
+                        line.scale.z = currentRayLength;
                     }
 
                     if (source.gamepad) {
@@ -793,66 +939,45 @@
                         const hand = source.handedness;
 
                         if (buttonPressed && !prevButtonsState[hand]) {
-                            
                             if (isTutorialActive) {
                                 if (isHoveringButton) {
+                                    playSelectSound();
                                     tutorialIndex++;
                                     if (tutorialIndex < tutorialSlides.length) {
                                         disegnaTutorialHUD();
                                     } else {
                                         isTutorialActive = false;
                                         tutorialGroup.visible = false;
-                                        locationPointerGroup1.visible = true; 
+                                        locationPointerGroup1.visible = true;
                                     }
                                 }
-                            } else {
-                                if (currentHoverObject) {
-                                    const data = currentHoverObject.userData;
-                                    
-                                    // LOGICA EMERGENZA (TAPPA 3)
-                                    if (stage3Triggered && !emergenzaRisolta && data.id === "tasto_emergenza") {
-                                        emergenzaRisolta = true;
-                                        if (rumoreAudio.isPlaying) {
-                                            rumoreAudio.stop();
-                                        }
-                                        disegnaSchedaWarning();
-                                    }
-                                    
-                                    // LOGICA DPI (FASE 1) — aggiorna solo la scheda fissa, nessuna infoGroup
-                                    if (stage1Triggered && !taskCompleted && !data.isFaseMacchinario) {
-                                        inspectedObjects.add(data.id);
-                                        if (inspectedObjects.size === totalObjectsToInspect) {
-                                            taskCompleted = true;
-                                        }
-                                        disegnaSchedaObiettivoDPI();
-                                        // NON aprire la infoGroup per i DPI
-                                    }
-                                    // LOGICA MACCHINARIO (FASE 2) — usa infoGroup normalmente
-                                    else if (data.isFaseMacchinario) {
-                                        if (isInfoPanelOpen) {
-                                            if (currentAttachedObject === currentHoverObject) {
-                                                infoGroup.visible = false; isInfoPanelOpen = false; currentAttachedObject = null;
-                                            } else {
-                                                disegnaSchedaMinimalSolida(data.title, data.info); currentAttachedObject = currentHoverObject;
-                                            }
-                                        } else {
-                                            disegnaSchedaMinimalSolida(data.title, data.info); infoGroup.visible = true; isInfoPanelOpen = true; currentAttachedObject = currentHoverObject;
+                            } else if (currentHoverObject) {
+                                playSelectSound();
+                                const data = currentHoverObject.userData;
 
-                                            if (stage2Triggered && !macchinarioTaskCompleted) {
-                                                macchinarioInspectedObjects.add(data.id);
-                                                if (macchinarioInspectedObjects.size === totalMacchinarioObjects) {
-                                                    macchinarioTaskCompleted = true;
-                                                }
-                                                disegnaSchedaObiettivoMacchinario3D();
-                                            }
-                                        }
-                                    }
-                                } else if (isInfoPanelOpen) {
-                                    infoGroup.visible = false; isInfoPanelOpen = false; currentAttachedObject = null;
+                                // EMERGENZA (TAPPA 3)
+                                if (stage3Triggered && !emergenzaRisolta && data.id === "tasto_emergenza") {
+                                    emergenzaRisolta = true;
+                                    if (rumoreAudio.isPlaying) rumoreAudio.stop();
+                                    disegnaSchedaEmergenza();
+                                }
+
+                                // DPI (FASE 1)
+                                if (stage1Triggered && !taskCompleted && !data.isFaseMacchinario) {
+                                    inspectedObjects.add(data.id);
+                                    if (inspectedObjects.size === totalObjectsToInspect) taskCompleted = true;
+                                    disegnaSchedaObiettivoDPI();
+                                }
+
+                                // MACCHINARIO (FASE 2) – senza popup, solo registrazione
+                                if (stage2Triggered && !macchinarioTaskCompleted && data.isFaseMacchinario) {
+                                    macchinarioInspectedObjects.add(data.id);
+                                    if (macchinarioInspectedObjects.size === totalMacchinarioObjects) macchinarioTaskCompleted = true;
+                                    disegnaSchedaObiettivoMacchinario();
                                 }
                             }
                         }
-                        prevButtonsState[hand] = buttonPressed; 
+                        prevButtonsState[hand] = buttonPressed;
                     }
                 }
 
@@ -868,7 +993,6 @@
             camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-
     </script>
 </body>
 </html>
