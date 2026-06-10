@@ -788,6 +788,7 @@
         const line2 = new THREE.Line(laserGeo, laserMat.clone()); line2.name = 'line'; line2.scale.z = 10; controller2.add(line2);
 
         let isTeleportMode = false; let activeTeleportController = null; let teleportPoint = new THREE.Vector3();
+        let isTeleportValid = false; // <-- nuovo flag per la validità della destinazione
 
         function onTriggerStart(event) {
             if (isTutorialActive) return;
@@ -796,7 +797,8 @@
 
         function onTriggerEnd(event) {
             if (isTutorialActive) return;
-            if (isTeleportMode && teleportMarker.visible && activeTeleportController === event.target) {
+            // Teletrasporto consentito solo se il marker è valido (azzurro)
+            if (isTeleportMode && isTeleportValid && teleportMarker.visible && activeTeleportController === event.target) {
                 cameraRig.position.set(teleportPoint.x, cameraRig.position.y, teleportPoint.z);
             }
             isTeleportMode = false; teleportMarker.visible = false; activeTeleportController = null;
@@ -876,6 +878,12 @@
                 }
             }
 
+            // Aggiorna elenco location pointer attivi (per il controllo del teletrasporto)
+            const activeTargets = [];
+            if (locationPointerGroup1.visible) activeTargets.push(targetStage1);
+            if (locationPointerGroup2.visible) activeTargets.push(targetStage2);
+            if (locationPointerGroup3.visible) activeTargets.push(targetStage3);
+
             if (session) {
                 let hoveringThisFrame = false;
 
@@ -920,15 +928,38 @@
                                     teleportPoint.copy(teleportIntersects[0].point);
                                     teleportMarker.position.copy(teleportPoint).y = 0.001;
                                     teleportMarker.visible = true;
+
+                                    // Verifica prossimità a uno dei location pointer attivi
+                                    if (activeTargets.length === 0) {
+                                        // Nessuna tappa attiva => teletrasporto libero (azzurro)
+                                        isTeleportValid = true;
+                                        teleportMat.uniforms.uColor.value.setHex(0x00d2ff);
+                                    } else {
+                                        let valid = false;
+                                        for (const target of activeTargets) {
+                                            const dx = teleportPoint.x - target.x;
+                                            const dz = teleportPoint.z - target.z;
+                                            const dist = Math.sqrt(dx * dx + dz * dz);
+                                            if (dist < 0.35) { // raggio interno dell'anello
+                                                valid = true;
+                                                break;
+                                            }
+                                        }
+                                        isTeleportValid = valid;
+                                        teleportMat.uniforms.uColor.value.setHex(valid ? 0x00d2ff : 0xff0000);
+                                    }
                                 } else {
+                                    // Puntando un oggetto diverso dal pavimento, disabilita teletrasporto
                                     currentRayLength = hitDist;
                                     teleportMarker.visible = false;
+                                    isTeleportValid = false;
                                 }
                             } else if (!objIntersects.length) {
                                 currentRayLength = hitDist;
                             }
                         } else if (isTeleportMode && controller === activeTeleportController) {
                             teleportMarker.visible = false;
+                            isTeleportValid = false;
                         }
 
                         line.scale.z = currentRayLength;
