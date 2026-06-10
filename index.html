@@ -24,6 +24,20 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
         // -----------------------------------------------------------------
+        // PRELOAD INTER TIGHT FONT
+        // -----------------------------------------------------------------
+        const fontFace = new FontFace('Inter Tight', 'url(https://fonts.gstatic.com/s/intertight/v7/NGSnv5HMAFg6IuGlBNMjxJEL2VmU3NS7Z2mjDw-qXCRToK8EPg.woff2)');
+        let fontReady = false;
+        fontFace.load().then((loaded) => {
+            document.fonts.add(loaded);
+            fontReady = true;
+            disegnaSchedaObiettivoDPI();
+        }).catch(() => {
+            fontReady = true;
+            disegnaSchedaObiettivoDPI();
+        });
+
+        // -----------------------------------------------------------------
         // CONFIGURAZIONE AMBIENTE E CAMERA RIG
         // -----------------------------------------------------------------
         const scene = new THREE.Scene();
@@ -126,7 +140,7 @@
 
         const tutorialSlides = [
             { title: "1. INDICATORE VR", text: "Questo cerchio azzurro mostra la tua prossima destinazione operativa o i punti di interesse attivi nell'area di addestramento.", imgSrc: "assets/tutorial/1.webp", imgObj: null },
-            { title: "2. INTERAZIONE OGGETTI", text: "Punta un oggetto con il raggio laser e premi i tasti 'A' (Controller Destro) o 'X' (Controller Sinistro) per aprire o chiudere la sua scheda informativa.", imgSrc: "assets/tutorial/2.webp", imgObj: null },
+            { title: "2. INTERAZIONE OGGETTI", text: "Punta un oggetto con il raggio laser e premi i tasti 'A' (Controller Destro) o 'X' (Controller Sinistro) per selezionarlo e registrare la tua ispezione.", imgSrc: "assets/tutorial/2.webp", imgObj: null },
             { title: "3. TELETRASPORTO DI MOVIMENTO", text: "Tieni premuto il Trigger (Grilletto posteriore) per proiettare il raggio di spostamento azzurro. Rilascialo per teletrasportarti nel punto mirato.", imgSrc: "assets/tutorial/3.webp", imgObj: null }
         ];
 
@@ -151,6 +165,17 @@
                     ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight;
                 } else { line = testLine; }
             } ctx.fillText(line, x, y);
+        }
+
+        function wrapTextLeft(ctx, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' '); let line = '';
+            for (let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + ' ';
+                if (ctx.measureText(testLine).width > maxWidth && n > 0) {
+                    ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight;
+                } else { line = testLine; }
+            } ctx.fillText(line, x, y);
+            return y;
         }
 
         function disegnaTutorialHUD() {
@@ -222,7 +247,7 @@
         locationPointerGroup2.add(stageMarker2); locationPointerGroup2.add(stageTriangle2);
 
         // TAPPA 3: Allarme Emergenza Macchinario
-        const targetStage3 = new THREE.Vector3(3, 0.01, -5); // Vicino al macchinario
+        const targetStage3 = new THREE.Vector3(3, 0.01, -5);
         let stage3Triggered = false;
         let emergenzaRisolta = false;
         const locationPointerGroup3 = new THREE.Group();
@@ -244,39 +269,239 @@
         const totalMacchinarioObjects = 2;
         let macchinarioTaskCompleted = false;
 
+        // Dati DPI per la scheda
+        const ppeDati = [
+            { id: "caschetto", url: 'assets/safety/caschetto.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5), title: "Caschetto di Sicurezza", info: "Protegge il capo da urti accidentali e caduta di materiali. Controlla sempre l'integrità della calotta prima dell'uso." },
+            { id: "occhiali", url: 'assets/safety/occhiali.glb', pos: new THREE.Vector3(0, 0.8, -1.5), title: "Occhiali Protettivi", info: "Ripara gli occhi da schegge, polvere e schizzi di liquidi pericolosi. Verifica che le lenti siano intatte e pulite." },
+            { id: "guanti", url: 'assets/safety/guanti.glb', pos: new THREE.Vector3(0.6, 0.8, -1.5), title: "Guanti da Lavoro", info: "Garantiscono una presa sicura e proteggono le mani da tagli o abrasioni. Assicurati che non presentino strappi o usura." }
+        ];
 
         // -----------------------------------------------------------------
-        // CREAZIONE SCHEDA OBIETTIVO 1 (Fissa sul Banco)
+        // SCHEDA OBIETTIVO DPI (Fase 1) — Grande pannello fisso nello spazio
+        // Canvas 1024x680 → Mesh 1.5 x 1.0 m
         // -----------------------------------------------------------------
-        const objCanvas = document.createElement('canvas'); objCanvas.width = 512; objCanvas.height = 320;
+        const DPI_CANVAS_W = 1024;
+        const DPI_CANVAS_H = 680;
+        const objCanvas = document.createElement('canvas');
+        objCanvas.width = DPI_CANVAS_W;
+        objCanvas.height = DPI_CANVAS_H;
         const objCtx = objCanvas.getContext('2d');
         const objTexture = new THREE.CanvasTexture(objCanvas);
 
-        const objPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.5), new THREE.MeshBasicMaterial({ map: objTexture, side: THREE.DoubleSide, transparent: true }));
+        const objPanelMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.5, 1.0),
+            new THREE.MeshBasicMaterial({ map: objTexture, side: THREE.DoubleSide, transparent: true })
+        );
         const objectiveGroup = new THREE.Group();
         objectiveGroup.add(objPanelMesh);
-        scene.add(objectiveGroup); 
-        objectiveGroup.position.set(0, 1.45, -1.96); 
-        objectiveGroup.visible = false; 
+        scene.add(objectiveGroup);
+        // Posizionato sopra il banco, ben visibile
+        objectiveGroup.position.set(0, 1.6, -2.1);
+        objectiveGroup.visible = false;
 
-        function disegnaSchedaObiettivo3D() {
-            objCtx.clearRect(0, 0, 512, 320);
-            objCtx.fillStyle = 'rgba(15, 15, 15, 0.95)'; objCtx.fillRect(0, 0, 512, 320);
-            
+        function roundRect(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+
+        function disegnaSchedaObiettivoDPI() {
+            const W = DPI_CANVAS_W;
+            const H = DPI_CANVAS_H;
+            const font = fontReady ? "'Inter Tight'" : 'sans-serif';
+
+            objCtx.clearRect(0, 0, W, H);
+
+            // Sfondo principale — grigio chiaro come nello screenshot
+            objCtx.fillStyle = '#e8e8e8';
+            roundRect(objCtx, 0, 0, W, H, 24);
+            objCtx.fill();
+
             if (taskCompleted) {
-                objCtx.strokeStyle = '#00ff66'; objCtx.lineWidth = 6; objCtx.strokeRect(0, 0, 512, 320);
-                objCtx.fillStyle = '#00ff66'; objCtx.font = 'bold 24px sans-serif'; objCtx.textAlign = 'left'; objCtx.fillText("✔ OBIETTIVO COMPLETATO", 40, 60);
-                objCtx.fillStyle = '#ffffff'; objCtx.font = '18px sans-serif'; objCtx.fillText("Tutti i DPI sul banco sono stati verificati.", 40, 130);
-                objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 16px sans-serif'; objCtx.fillText("RAGGIUNGI IL MACCHINARIO SUL RETRO", 40, 240);
+                // ---- STATO COMPLETATO ----
+                // Bordo verde sottile
+                objCtx.strokeStyle = '#22c55e';
+                objCtx.lineWidth = 6;
+                roundRect(objCtx, 3, 3, W - 6, H - 6, 22);
+                objCtx.stroke();
+
+                // Badge livello
+                objCtx.fillStyle = '#22c55e';
+                roundRect(objCtx, 40, 32, 160, 42, 21);
+                objCtx.fill();
+                objCtx.fillStyle = '#ffffff';
+                objCtx.font = `600 20px ${font}`;
+                objCtx.textAlign = 'left';
+                objCtx.fillText('Livello 1', 70, 59);
+
+                objCtx.fillStyle = '#111111';
+                objCtx.font = `700 56px ${font}`;
+                objCtx.fillText('Ispezione DPI', 40, 145);
+
+                objCtx.fillStyle = '#22c55e';
+                objCtx.font = `500 26px ${font}`;
+                objCtx.fillText('✔ Tutti i DPI verificati — procedi al macchinario', 40, 190);
+
             } else {
-                objCtx.strokeStyle = 'rgba(0, 210, 255, 0.5)'; objCtx.lineWidth = 6; objCtx.strokeRect(0, 0, 512, 320);
-                objCtx.fillStyle = '#00d2ff'; objCtx.font = 'bold 22px sans-serif'; objCtx.textAlign = 'left'; objCtx.fillText("OBIETTIVO: ISPEZIONE DPI", 40, 60);
-                objCtx.fillStyle = '#cccccc'; objCtx.font = '16px sans-serif';
-                wrapTextCentrato(objCtx, "Seleziona ed apri la scheda informativa di tutti e tre i dispositivi di protezione presenti sul tavolo per verificarne la conformità tecnica prima di iniziare i lavori.", 40, 110, 432, 26);
-                objCtx.fillStyle = '#ffffff'; objCtx.font = 'bold 18px sans-serif'; objCtx.fillText(`DPI Ispezionati: ${inspectedObjects.size} / ${totalObjectsToInspect}`, 40, 260);
+                // ---- STATO IN CORSO ----
+                // Badge livello verde
+                objCtx.fillStyle = '#22c55e';
+                roundRect(objCtx, 40, 32, 155, 42, 21);
+                objCtx.fill();
+                objCtx.fillStyle = '#ffffff';
+                objCtx.font = `600 20px ${font}`;
+                objCtx.textAlign = 'left';
+                objCtx.fillText('Livello 1', 68, 59);
+
+                // Titolo
+                objCtx.fillStyle = '#111111';
+                objCtx.font = `700 58px ${font}`;
+                objCtx.fillText('Ispezione DPI', 40, 145);
+
+                // Sottotitolo
+                objCtx.fillStyle = '#444444';
+                objCtx.font = `400 26px ${font}`;
+                objCtx.fillText('Seleziona gli oggetti presenti sul tavolo', 40, 185);
+
+                // Linea divisoria sottile
+                objCtx.strokeStyle = '#cccccc';
+                objCtx.lineWidth = 1.5;
+                objCtx.beginPath();
+                objCtx.moveTo(40, 210);
+                objCtx.lineTo(W - 40, 210);
+                objCtx.stroke();
             }
+
+            // ---- 3 CARD DPI ----
+            if (!taskCompleted) {
+                const cardW = 286;
+                const cardH = 400;
+                const cardY = 228;
+                const cardStartX = 40;
+                const cardGap = 26;
+
+                ppeDati.forEach((dpi, i) => {
+                    const cx = cardStartX + i * (cardW + cardGap);
+                    const isSelected = inspectedObjects.has(dpi.id);
+
+                    // Sfondo card — bianco sporco, leggermente più chiaro dell'outer bg
+                    objCtx.fillStyle = '#f4f4f4';
+                    roundRect(objCtx, cx, cardY, cardW, cardH, 16);
+                    objCtx.fill();
+
+                    // Bordo card — verde se selezionato, trasparente altrimenti
+                    if (isSelected) {
+                        objCtx.strokeStyle = '#22c55e';
+                        objCtx.lineWidth = 3;
+                    } else {
+                        objCtx.strokeStyle = 'rgba(0,0,0,0.08)';
+                        objCtx.lineWidth = 1.5;
+                    }
+                    roundRect(objCtx, cx, cardY, cardW, cardH, 16);
+                    objCtx.stroke();
+
+                    // Area immagine oggetto — rettangolo scuro
+                    objCtx.fillStyle = '#1a1a1a';
+                    roundRect(objCtx, cx + 12, cardY + 12, cardW - 24, 210, 10);
+                    objCtx.fill();
+
+                    // Icona oggetto (placeholder emoji / lettera)
+                    const icons = ['🪖', '🥽', '🧤'];
+                    objCtx.font = `72px sans-serif`;
+                    objCtx.textAlign = 'center';
+                    objCtx.fillText(icons[i], cx + cardW / 2, cardY + 137);
+
+                    // Titolo oggetto
+                    objCtx.fillStyle = '#111111';
+                    objCtx.font = `700 22px ${font}`;
+                    objCtx.textAlign = 'left';
+                    objCtx.fillText(dpi.title, cx + 16, cardY + 250);
+
+                    // Descrizione breve
+                    objCtx.fillStyle = '#666666';
+                    objCtx.font = `400 16px ${font}`;
+                    const descWords = dpi.info.split(' ');
+                    let line = ''; let ty = cardY + 278;
+                    for (let n = 0; n < descWords.length; n++) {
+                        const testLine = line + descWords[n] + ' ';
+                        if (objCtx.measureText(testLine).width > cardW - 32 && n > 0) {
+                            objCtx.fillText(line, cx + 16, ty);
+                            line = descWords[n] + ' '; ty += 22;
+                        } else { line = testLine; }
+                        if (ty > cardY + 348) { line = ''; break; }
+                    }
+                    if (line && ty <= cardY + 348) objCtx.fillText(line, cx + 16, ty);
+
+                    // Linea divisoria prima del checkbox
+                    objCtx.strokeStyle = '#e0e0e0';
+                    objCtx.lineWidth = 1;
+                    objCtx.beginPath();
+                    objCtx.moveTo(cx + 16, cardY + cardH - 66);
+                    objCtx.lineTo(cx + cardW - 16, cardY + cardH - 66);
+                    objCtx.stroke();
+
+                    // Checkbox row
+                    const checkY = cardY + cardH - 48;
+                    const checkBoxSize = 22;
+                    const checkBoxX = cx + 16;
+                    const checkBoxCY = checkY + checkBoxSize / 2;
+
+                    if (isSelected) {
+                        // Checkbox pieno verde
+                        objCtx.fillStyle = '#22c55e';
+                        roundRect(objCtx, checkBoxX, checkY, checkBoxSize, checkBoxSize, 6);
+                        objCtx.fill();
+                        // Checkmark
+                        objCtx.strokeStyle = '#ffffff';
+                        objCtx.lineWidth = 3;
+                        objCtx.lineCap = 'round';
+                        objCtx.lineJoin = 'round';
+                        objCtx.beginPath();
+                        objCtx.moveTo(checkBoxX + 5, checkBoxCY);
+                        objCtx.lineTo(checkBoxX + 9, checkBoxCY + 5);
+                        objCtx.lineTo(checkBoxX + 17, checkBoxCY - 4);
+                        objCtx.stroke();
+
+                        // Label
+                        objCtx.fillStyle = '#22c55e';
+                        objCtx.font = `600 17px ${font}`;
+                        objCtx.textAlign = 'left';
+                        objCtx.fillText('Selezionato', checkBoxX + 30, checkY + 16);
+                    } else {
+                        // Checkbox vuoto grigio
+                        objCtx.fillStyle = '#d4d4d4';
+                        roundRect(objCtx, checkBoxX, checkY, checkBoxSize, checkBoxSize, 6);
+                        objCtx.fill();
+
+                        // Label
+                        objCtx.fillStyle = '#999999';
+                        objCtx.font = `500 17px ${font}`;
+                        objCtx.textAlign = 'left';
+                        objCtx.fillText('Da selezionare', checkBoxX + 30, checkY + 16);
+                    }
+                });
+
+                // Contatore in basso a destra
+                objCtx.fillStyle = '#888888';
+                objCtx.font = `500 20px ${font}`;
+                objCtx.textAlign = 'right';
+                objCtx.fillText(`${inspectedObjects.size} / ${totalObjectsToInspect} DPI ispezionati`, W - 40, H - 20);
+            }
+
             objTexture.needsUpdate = true;
         }
+
+        // Pre-disegna la scheda (verrà richiamata quando il font è pronto)
+        disegnaSchedaObiettivoDPI();
+
 
         // -----------------------------------------------------------------
         // CREAZIONE SCHEDA OBIETTIVO 2 E 3 (Warning) AL MACCHINARIO
@@ -321,7 +546,7 @@
         const warningGroup = new THREE.Group();
         warningGroup.add(warningPanelMesh);
         scene.add(warningGroup); 
-        warningGroup.position.set(3, 1.8, -5.8); // Più vicino all'area di emergenza
+        warningGroup.position.set(3, 1.8, -5.8);
         warningGroup.rotation.y = -Math.PI / 10;
         warningGroup.visible = false; 
 
@@ -339,22 +564,18 @@
                 warningCtx.strokeStyle = 'rgba(255, 0, 0, 0.8)'; warningCtx.lineWidth = 6; warningCtx.strokeRect(0, 0, 512, 320);
                 warningCtx.fillStyle = '#ff0000'; warningCtx.font = 'bold 24px sans-serif'; warningCtx.textAlign = 'left'; warningCtx.fillText("⚠ ATTENZIONE: PERICOLO", 40, 60);
                 warningCtx.fillStyle = '#ffffff'; warningCtx.font = '18px sans-serif';
-                wrapTextCentrato(warningCtx, "Il macchinario è in è in avaria e va spento immediatamente!", 40, 110, 432, 26);
+                wrapTextCentrato(warningCtx, "Il macchinario è in avaria e va spento immediatamente!", 40, 110, 432, 26);
             }
             warningTexture.needsUpdate = true;
         }
 
 
         // -----------------------------------------------------------------
-        // CONFIGURAZIONE SCHEDA INFORMATIVA E NUOVI DPI
+        // SCHEDA INFORMATIVA (usata solo per Fase 2 e 3 — macchinario)
         // -----------------------------------------------------------------
-        let isInfoPanelOpen = false; let currentHoverObject = null; let currentAttachedObject = null; 
-
-        const ppeDati = [
-            { id: "caschetto", url: 'assets/safety/caschetto.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5), title: "Caschetto di Sicurezza", info: "Protegge il capo da urti accidentali e caduta di materiali. Controlla sempre l'integrità della calotta prima dell'uso." },
-            { id: "occhiali", url: 'assets/safety/occhiali.glb', pos: new THREE.Vector3(0, 0.8, -1.5), title: "Occhiali Protettivi", info: "Ripara gli occhi da schegge, polvere e schizzi di liquidi pericolosi. Verifica che le lenti siano intatte e pulite." },
-            { id: "guanti", url: 'assets/safety/guanti.glb', pos: new THREE.Vector3(0.6, 0.8, -1.5), title: "Guanti da Lavoro", info: "Garantiscono una presa sicura e proteggono le mani da tagli o abrasioni. Assicurati che non presentino strappi o usura." }
-        ];
+        let isInfoPanelOpen = false;
+        let currentHoverObject = null;
+        let currentAttachedObject = null; 
 
         const infoCanvas = document.createElement('canvas'); infoCanvas.width = 400; infoCanvas.height = 300;
         const infoCtx = infoCanvas.getContext('2d'); const infoTexture = new THREE.CanvasTexture(infoCanvas);
@@ -464,7 +685,7 @@
                 if (userPos2D.distanceTo(targetPos2D) < 0.5) {
                     stage1Triggered = true;
                     locationPointerGroup1.visible = false; 
-                    disegnaSchedaObiettivo3D();
+                    disegnaSchedaObiettivoDPI();
                     objectiveGroup.visible = true; 
                 }
             }
@@ -498,13 +719,11 @@
                 if (userPos2D.distanceTo(targetPos2D3) < 0.6) {
                     stage3Triggered = true;
                     locationPointerGroup3.visible = false;
-                    machObjectiveGroup.visible = false; // Nascondiamo scheda tappa 2
+                    machObjectiveGroup.visible = false;
                     
-                    // Inizia fase d'emergenza
                     disegnaSchedaWarning();
                     warningGroup.visible = true;
                     
-                    // Riproduce il rumore se caricato
                     if (rumoreAudio.buffer && !rumoreAudio.isPlaying) {
                         rumoreAudio.play();
                     }
@@ -570,7 +789,9 @@
                     }
 
                     if (source.gamepad) {
-                        const buttonPressed = source.gamepad.buttons[4]?.pressed || false; const hand = source.handedness;
+                        const buttonPressed = source.gamepad.buttons[4]?.pressed || false;
+                        const hand = source.handedness;
+
                         if (buttonPressed && !prevButtonsState[hand]) {
                             
                             if (isTutorialActive) {
@@ -594,37 +815,34 @@
                                         if (rumoreAudio.isPlaying) {
                                             rumoreAudio.stop();
                                         }
-                                        disegnaSchedaWarning(); // Aggiorna la scheda a "Completato"
+                                        disegnaSchedaWarning();
                                     }
                                     
-                                    // Logica standard scheda info
-                                    if (isInfoPanelOpen) {
-                                        if (currentAttachedObject === currentHoverObject) {
-                                            infoGroup.visible = false; isInfoPanelOpen = false; currentAttachedObject = null;
-                                        } else {
-                                            disegnaSchedaMinimalSolida(data.title, data.info); currentAttachedObject = currentHoverObject;
+                                    // LOGICA DPI (FASE 1) — aggiorna solo la scheda fissa, nessuna infoGroup
+                                    if (stage1Triggered && !taskCompleted && !data.isFaseMacchinario) {
+                                        inspectedObjects.add(data.id);
+                                        if (inspectedObjects.size === totalObjectsToInspect) {
+                                            taskCompleted = true;
                                         }
-                                    } else {
-                                        disegnaSchedaMinimalSolida(data.title, data.info); infoGroup.visible = true; isInfoPanelOpen = true; currentAttachedObject = currentHoverObject;
-                                        
-                                        // Logica completamento Tappa 1 (DPI)
-                                        if (stage1Triggered && !taskCompleted && !data.isFaseMacchinario) {
-                                            inspectedObjects.add(data.id);
-                                            if (inspectedObjects.size === totalObjectsToInspect) {
-                                                taskCompleted = true;
-                                                disegnaSchedaObiettivo3D(); 
+                                        disegnaSchedaObiettivoDPI();
+                                        // NON aprire la infoGroup per i DPI
+                                    }
+                                    // LOGICA MACCHINARIO (FASE 2) — usa infoGroup normalmente
+                                    else if (data.isFaseMacchinario) {
+                                        if (isInfoPanelOpen) {
+                                            if (currentAttachedObject === currentHoverObject) {
+                                                infoGroup.visible = false; isInfoPanelOpen = false; currentAttachedObject = null;
                                             } else {
-                                                disegnaSchedaObiettivo3D(); 
+                                                disegnaSchedaMinimalSolida(data.title, data.info); currentAttachedObject = currentHoverObject;
                                             }
-                                        }
+                                        } else {
+                                            disegnaSchedaMinimalSolida(data.title, data.info); infoGroup.visible = true; isInfoPanelOpen = true; currentAttachedObject = currentHoverObject;
 
-                                        // Logica completamento Tappa 2 (Macchinario)
-                                        if (stage2Triggered && !macchinarioTaskCompleted && data.isFaseMacchinario) {
-                                            macchinarioInspectedObjects.add(data.id);
-                                            if (macchinarioInspectedObjects.size === totalMacchinarioObjects) {
-                                                macchinarioTaskCompleted = true;
-                                                disegnaSchedaObiettivoMacchinario3D();
-                                            } else {
+                                            if (stage2Triggered && !macchinarioTaskCompleted) {
+                                                macchinarioInspectedObjects.add(data.id);
+                                                if (macchinarioInspectedObjects.size === totalMacchinarioObjects) {
+                                                    macchinarioTaskCompleted = true;
+                                                }
                                                 disegnaSchedaObiettivoMacchinario3D();
                                             }
                                         }
