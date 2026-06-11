@@ -48,7 +48,8 @@
         // -----------------------------------------------------------------
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a1a);
-        scene.fog = new THREE.FogExp2(0x1a1a1a, 0.06);
+        // Nebbia molto più leggera per non scurire
+        scene.fog = new THREE.FogExp2(0x2a2a3a, 0.02);
 
         const cameraRig = new THREE.Group();
         cameraRig.position.set(0, 0, 2);
@@ -88,32 +89,57 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.xr.enabled = true;
+        // ----- OMBRE ABILITATE -----
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; // ombre morbide
         document.body.appendChild(renderer.domElement);
         document.body.appendChild(VRButton.createButton(renderer));
 
-        scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 1.2));
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-        dirLight.position.set(3, 10, 3);
+        // ----- LUCI PIÙ FORTI E REALISTICHE -----
+        // Luce ambientale generale (sky/ground)
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.8));
+        // Luce ambientale soffusa per riempire le ombre senza appiattire
+        scene.add(new THREE.AmbientLight(0x334455, 0.6));
+
+        // Luce direzionale principale (sole artificiale) CON OMBRE
+        const dirLight = new THREE.DirectionalLight(0xfff5e6, 2.5);
+        dirLight.position.set(4, 12, 6);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 50;
+        dirLight.shadow.camera.left = -8;
+        dirLight.shadow.camera.right = 8;
+        dirLight.shadow.camera.top = 8;
+        dirLight.shadow.camera.bottom = -8;
+        dirLight.shadow.bias = -0.0001;
         scene.add(dirLight);
 
+        // -----------------------------------------------------------------
+        // PAVIMENTO E GRIGLIA (con ombre)
+        // -----------------------------------------------------------------
         const floor = new THREE.Mesh(
             new THREE.PlaneGeometry(40, 40),
-            new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 })
+            new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.85 })
         );
         floor.rotation.x = -Math.PI / 2;
         floor.name = 'floor';
+        floor.receiveShadow = true; // riceve ombre
         scene.add(floor);
 
-        const grid = new THREE.GridHelper(40, 40, 0x333333, 0x222222);
-        grid.position.y = 0.001;
+        const grid = new THREE.GridHelper(40, 40, 0x444444, 0x333333);
+        grid.position.y = 0.002;
         scene.add(grid);
 
         const table = new THREE.Mesh(
             new THREE.BoxGeometry(2.2, 0.8, 0.8),
-            new THREE.MeshStandardMaterial({ color: 0x2b2b2b })
+            new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.7 })
         );
         table.position.set(0, 0.4, -1.5);
         table.name = 'table';
+        table.castShadow = true;   // proietta ombra
+        table.receiveShadow = true; // riceve ombra
         scene.add(table);
 
         const interactables = [];
@@ -133,24 +159,28 @@
             const machineModel = gltf.scene;
             machineModel.position.set(-1, 0, -3.5);
             machineModel.name = 'macchinario';
-            scene.add(machineModel);
-            environmentColliders.push(machineModel);
-
+            // Abilita ombre su tutto il modello
             machineModel.traverse((child) => {
-                if (child.isMesh && componentiMacchinario[child.name]) {
-                    const datiComponente = componentiMacchinario[child.name];
-                    child.userData.isInteractable = true;
-                    child.userData.id = datiComponente.id;
-                    child.userData.title = datiComponente.title;
-                    child.userData.info = datiComponente.info;
-                    child.userData.isFaseMacchinario = true;
-                    interactables.push(child);
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    if (componentiMacchinario[child.name]) {
+                        const datiComponente = componentiMacchinario[child.name];
+                        child.userData.isInteractable = true;
+                        child.userData.id = datiComponente.id;
+                        child.userData.title = datiComponente.title;
+                        child.userData.info = datiComponente.info;
+                        child.userData.isFaseMacchinario = true;
+                        interactables.push(child);
+                    }
                 }
             });
+            scene.add(machineModel);
+            environmentColliders.push(machineModel);
         }, undefined, (error) => { console.warn("Modello macchinario non trovato, procedo senza:", error); });
 
         // -----------------------------------------------------------------
-        // STATO E DATI DEL TUTORIAL
+        // STATO E DATI DEL TUTORIAL (invariato)
         // -----------------------------------------------------------------
         let isTutorialActive = true;
         let tutorialIndex = 0;
@@ -162,7 +192,6 @@
             { title: "3.  Teletrasporto", text: "Tieni premuto il Trigger (Grilletto posteriore) per proiettare il raggio di spostamento azzurro. Rilascialo per teletrasportarti nel punto mirato.", imgSrc: "assets/tutorial/3.webp", imgObj: null }
         ];
 
-        // Canvas tutorial: proporzioni card screenshot (circa 3:4)
         const TUT_W = 480;
         const TUT_H = 800;
         const tutorialCanvas = document.createElement('canvas');
@@ -171,8 +200,7 @@
         const tutCtx = tutorialCanvas.getContext('2d');
         const tutorialTexture = new THREE.CanvasTexture(tutorialCanvas);
 
-        // Aspect ratio corretto per il PlaneGeometry
-        const tutAspect = TUT_W / TUT_H; // ~0.774
+        const tutAspect = TUT_W / TUT_H;
         const tutorialMesh = new THREE.Mesh(
             new THREE.PlaneGeometry(0.5 * tutAspect, 0.5),
             new THREE.MeshBasicMaterial({ map: tutorialTexture, side: THREE.DoubleSide, transparent: true })
@@ -208,10 +236,7 @@
             const RADIUS = 20;
 
             tutCtx.clearRect(0, 0, W, H);
-
-            // --- Sfondo card: bianco puro con ombra leggera ---
             tutCtx.save();
-            // Ombra esterna
             tutCtx.shadowColor = 'rgba(0,0,0,0.18)';
             tutCtx.shadowBlur = 28;
             tutCtx.shadowOffsetY = 6;
@@ -220,8 +245,7 @@
             tutCtx.fill();
             tutCtx.restore();
 
-            // --- Immagine in cima (occupa tutta la larghezza, angoli arrotondati solo in alto) ---
-            const IMG_H = W; // immagine quadrata
+            const IMG_H = W;
             tutCtx.save();
             tutCtx.beginPath();
             tutCtx.moveTo(RADIUS, 0);
@@ -237,7 +261,6 @@
             tutCtx.clip();
 
             if (slide.imgObj && slide.imgObj.complete) {
-                // Cover-fit: riempi tutta l'area immagine
                 const iW = slide.imgObj.width;
                 const iH = slide.imgObj.height;
                 const scale = Math.max(W / iW, IMG_H / iH);
@@ -247,13 +270,11 @@
                 const drawY = (IMG_H - drawH) / 2;
                 tutCtx.drawImage(slide.imgObj, drawX, drawY, drawW, drawH);
             } else {
-                // Placeholder grigio
                 tutCtx.fillStyle = '#C8C8C8';
                 tutCtx.fillRect(0, 0, W, IMG_H);
             }
             tutCtx.restore();
 
-            // --- Badge "Tutorial" (pill bianco con bordo grigio) ---
             const badgePX = 14, badgePY = 6;
             tutCtx.font = `500 22px ${font}`;
             const badgeText = 'Tutorial';
@@ -271,37 +292,28 @@
             tutCtx.fill();
             tutCtx.restore();
 
-            // Bordo badge
             tutCtx.strokeStyle = 'rgba(0,0,0,0.10)';
             tutCtx.lineWidth = 1.2;
             roundRect(tutCtx, badgeX, badgeY, badgeW, badgeH, badgeH / 2);
             tutCtx.stroke();
 
-            // Testo badge
             tutCtx.fillStyle = '#111111';
             tutCtx.font = `500 22px ${font}`;
             tutCtx.textAlign = 'left';
             tutCtx.fillText(badgeText, badgeX + badgePX, badgeY + badgeH / 2 + 8);
 
-            // --- Area testo (sotto immagine) ---
             const textTop = IMG_H + 48;
-
-            // Titolo grande, allineato a sinistra, bold
             tutCtx.fillStyle = '#0D0D0D';
             tutCtx.font = `700 38px ${font}`;
             tutCtx.textAlign = 'left';
             tutCtx.fillText(slide.title, PAD, textTop);
 
-            // Separatore invisibile (spazio)
             const descTop = textTop + 48;
-
-            // Testo descrittivo: grigio scuro, peso normale
             tutCtx.fillStyle = '#444444';
             tutCtx.font = `400 21px ${font}`;
             tutCtx.textAlign = 'left';
             wrapTextLeft(tutCtx, slide.text, PAD, descTop, W - PAD * 2, 30);
 
-            // --- Pulsante azzurro in basso a sinistra ---
             const btnLabel = tutorialIndex === tutorialSlides.length - 1 ? "Inizia training →" : "Prosegui →";
             tutCtx.font = `700 22px ${font}`;
             const btnTextW = tutCtx.measureText(btnLabel).width;
@@ -335,7 +347,7 @@
         });
 
         // -----------------------------------------------------------------
-        // LOCATION POINTERS
+        // LOCATION POINTERS (invariati)
         // -----------------------------------------------------------------
         const stageMarkerMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
         const coneGeo = new THREE.ConeGeometry(0.08, 0.2, 4).rotateX(Math.PI);
@@ -402,7 +414,7 @@
         ];
 
         // -----------------------------------------------------------------
-        // SCHEDA OBIETTIVO DPI
+        // SCHEDE OBIETTIVO (invariate)
         // -----------------------------------------------------------------
         const DPI_CANVAS_W = 1024;
         const DPI_CANVAS_H = 680;
@@ -421,9 +433,6 @@
         objectiveGroup.position.set(0, 1.6, -2.1);
         objectiveGroup.visible = false;
 
-        // -----------------------------------------------------------------
-        // SCHEDA OBIETTIVO MACCHINARIO
-        // -----------------------------------------------------------------
         const machCanvas = document.createElement('canvas');
         machCanvas.width = DPI_CANVAS_W; machCanvas.height = DPI_CANVAS_H;
         const machCtx = machCanvas.getContext('2d');
@@ -440,9 +449,6 @@
         machObjectiveGroup.rotation.y = 0;
         machObjectiveGroup.visible = false;
 
-        // -----------------------------------------------------------------
-        // SCHEDA EMERGENZA
-        // -----------------------------------------------------------------
         const emergCanvas = document.createElement('canvas');
         emergCanvas.width = DPI_CANVAS_W; emergCanvas.height = DPI_CANVAS_H;
         const emergCtx = emergCanvas.getContext('2d');
@@ -816,12 +822,15 @@
         disegnaSchedaObiettivoMacchinario();
         disegnaSchedaEmergenza();
 
+        // ----- CARICAMENTO DPI CON OMBRE -----
         ppeDati.forEach((data) => {
             gltfLoader.load(data.url, (gltf) => {
                 const model = gltf.scene;
                 model.position.copy(data.pos);
                 model.traverse((child) => {
                     if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
                         child.userData.isInteractable = true;
                         child.userData.id = data.id;
                         child.userData.title = data.title;
@@ -835,7 +844,7 @@
         });
 
         // -----------------------------------------------------------------
-        // TELETRASPORTO E CONTROLLER
+        // TELETRASPORTO E CONTROLLER (invariati)
         // -----------------------------------------------------------------
         const teleportHeight = 0.6, teleportRadius = 0.25;
         const teleportGeo = new THREE.CylinderGeometry(teleportRadius, teleportRadius, teleportHeight, 32, 1, true).translate(0, teleportHeight / 2, 0);
@@ -878,7 +887,7 @@
         controller2.addEventListener('selectstart', onTriggerStart); controller2.addEventListener('selectend', onTriggerEnd);
 
         // -----------------------------------------------------------------
-        // LOOP ANIMAZIONE
+        // LOOP ANIMAZIONE (invariato)
         // -----------------------------------------------------------------
         const raycaster = new THREE.Raycaster();
         const workingMatrix = new THREE.Matrix4();
@@ -958,13 +967,9 @@
                         if (tutIntersects.length > 0) {
                             currentRayLength = tutIntersects[0].distance;
                             const uv = tutIntersects[0].uv;
-                            // Area pulsante: bottom-left, pill azzurro
-                            // Nel canvas: btnX=PAD(28), btnY=H-btnH-PAD, btnW=variabile
-                            // In UV: x da 28/480 a circa (28+220)/480, y da PAD/620 a (PAD+52)/620
-                            // UV y è invertita (0=bottom, 1=top)
                             const uvBtnXmin = 28 / TUT_W;
-                            const uvBtnXmax = 280 / TUT_W; // larghezza generosa
-                            const uvBtnYmin = 28 / TUT_H;  // UV y basso
+                            const uvBtnXmax = 280 / TUT_W;
+                            const uvBtnYmin = 28 / TUT_H;
                             const uvBtnYmax = 100 / TUT_H;
                             if (uv.x >= uvBtnXmin && uv.x <= uvBtnXmax && uv.y >= uvBtnYmin && uv.y <= uvBtnYmax) {
                                 hoveringThisFrame = true;
