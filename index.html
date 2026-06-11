@@ -48,7 +48,6 @@
         // -----------------------------------------------------------------
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x1a1a1a);
-        // Nebbia molto più leggera per non scurire
         scene.fog = new THREE.FogExp2(0x2a2a3a, 0.02);
 
         const cameraRig = new THREE.Group();
@@ -89,19 +88,15 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.xr.enabled = true;
-        // ----- OMBRE ABILITATE -----
         renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap; // ombre morbide
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
         document.body.appendChild(VRButton.createButton(renderer));
 
         // ----- LUCI PIÙ FORTI E REALISTICHE -----
-        // Luce ambientale generale (sky/ground)
         scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.8));
-        // Luce ambientale soffusa per riempire le ombre senza appiattire
         scene.add(new THREE.AmbientLight(0x334455, 0.6));
 
-        // Luce direzionale principale (sole artificiale) CON OMBRE
         const dirLight = new THREE.DirectionalLight(0xfff5e6, 2.5);
         dirLight.position.set(4, 12, 6);
         dirLight.castShadow = true;
@@ -117,7 +112,7 @@
         scene.add(dirLight);
 
         // -----------------------------------------------------------------
-        // PAVIMENTO E GRIGLIA (con ombre)
+        // PAVIMENTO E GRIGLIA
         // -----------------------------------------------------------------
         const floor = new THREE.Mesh(
             new THREE.PlaneGeometry(40, 40),
@@ -125,7 +120,7 @@
         );
         floor.rotation.x = -Math.PI / 2;
         floor.name = 'floor';
-        floor.receiveShadow = true; // riceve ombre
+        floor.receiveShadow = true;
         scene.add(floor);
 
         const grid = new THREE.GridHelper(40, 40, 0x444444, 0x333333);
@@ -138,8 +133,8 @@
         );
         table.position.set(0, 0.4, -1.5);
         table.name = 'table';
-        table.castShadow = true;   // proietta ombra
-        table.receiveShadow = true; // riceve ombra
+        table.castShadow = true;
+        table.receiveShadow = true;
         scene.add(table);
 
         const interactables = [];
@@ -159,7 +154,6 @@
             const machineModel = gltf.scene;
             machineModel.position.set(-1, 0, -3.5);
             machineModel.name = 'macchinario';
-            // Abilita ombre su tutto il modello
             machineModel.traverse((child) => {
                 if (child.isMesh) {
                     child.castShadow = true;
@@ -180,7 +174,7 @@
         }, undefined, (error) => { console.warn("Modello macchinario non trovato, procedo senza:", error); });
 
         // -----------------------------------------------------------------
-        // STATO E DATI DEL TUTORIAL (invariato)
+        // STATO E DATI DEL TUTORIAL
         // -----------------------------------------------------------------
         let isTutorialActive = true;
         let tutorialIndex = 0;
@@ -203,7 +197,7 @@
         const tutAspect = TUT_W / TUT_H;
         const tutorialMesh = new THREE.Mesh(
             new THREE.PlaneGeometry(0.5 * tutAspect, 0.5),
-            new THREE.MeshBasicMaterial({ map: tutorialTexture, side: THREE.DoubleSide, transparent: true })
+            new THREE.MeshBasicMaterial({ map: tutorialTexture, side: THREE.DoubleSide, transparent: true, opacity: 0 })
         );
         const tutorialGroup = new THREE.Group();
         tutorialGroup.add(tutorialMesh);
@@ -347,7 +341,7 @@
         });
 
         // -----------------------------------------------------------------
-        // LOCATION POINTERS (invariati)
+        // LOCATION POINTERS
         // -----------------------------------------------------------------
         const stageMarkerMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
         const coneGeo = new THREE.ConeGeometry(0.08, 0.2, 4).rotateX(Math.PI);
@@ -414,7 +408,7 @@
         ];
 
         // -----------------------------------------------------------------
-        // SCHEDE OBIETTIVO (invariate)
+        // SCHEDE OBIETTIVO (con materiali trasparenti pronti per fade)
         // -----------------------------------------------------------------
         const DPI_CANVAS_W = 1024;
         const DPI_CANVAS_H = 680;
@@ -425,13 +419,13 @@
 
         const objPanelMesh = new THREE.Mesh(
             new THREE.PlaneGeometry(1.5, 1.0),
-            new THREE.MeshBasicMaterial({ map: objTexture, side: THREE.DoubleSide, transparent: true })
+            new THREE.MeshBasicMaterial({ map: objTexture, side: THREE.DoubleSide, transparent: true, opacity: 0 })
         );
         const objectiveGroup = new THREE.Group();
         objectiveGroup.add(objPanelMesh);
         scene.add(objectiveGroup);
         objectiveGroup.position.set(0, 1.6, -2.1);
-        objectiveGroup.visible = false;
+        objectiveGroup.visible = true; // sempre visibile, ma opacità a 0
 
         const machCanvas = document.createElement('canvas');
         machCanvas.width = DPI_CANVAS_W; machCanvas.height = DPI_CANVAS_H;
@@ -440,14 +434,14 @@
 
         const machPanelMesh = new THREE.Mesh(
             new THREE.PlaneGeometry(1.5, 1.0),
-            new THREE.MeshBasicMaterial({ map: machTexture, side: THREE.DoubleSide, transparent: true })
+            new THREE.MeshBasicMaterial({ map: machTexture, side: THREE.DoubleSide, transparent: true, opacity: 0 })
         );
         const machObjectiveGroup = new THREE.Group();
         machObjectiveGroup.add(machPanelMesh);
         scene.add(machObjectiveGroup);
         machObjectiveGroup.position.set(3.30, 1.80, -4.30);
         machObjectiveGroup.rotation.y = 0;
-        machObjectiveGroup.visible = false;
+        machObjectiveGroup.visible = true;
 
         const emergCanvas = document.createElement('canvas');
         emergCanvas.width = DPI_CANVAS_W; emergCanvas.height = DPI_CANVAS_H;
@@ -456,14 +450,29 @@
 
         const emergPanelMesh = new THREE.Mesh(
             new THREE.PlaneGeometry(1.5, 1.0),
-            new THREE.MeshBasicMaterial({ map: emergTexture, side: THREE.DoubleSide, transparent: true })
+            new THREE.MeshBasicMaterial({ map: emergTexture, side: THREE.DoubleSide, transparent: true, opacity: 0 })
         );
         const emergGroup = new THREE.Group();
         emergGroup.add(emergPanelMesh);
         scene.add(emergGroup);
         emergGroup.position.set(3, 1.8, -5.8);
         emergGroup.rotation.y = 0;
-        emergGroup.visible = false;
+        emergGroup.visible = true;
+
+        // -----------------------------------------------------------------
+        // SISTEMA DI TRANSIZIONE OPACITÀ
+        // -----------------------------------------------------------------
+        const clock = new THREE.Clock();
+
+        const panels = [
+            { group: tutorialGroup, mesh: tutorialMesh, currentOpacity: 0, targetOpacity: 1, speed: 2.5 }, // inizia subito a comparire
+            { group: objectiveGroup, mesh: objPanelMesh, currentOpacity: 0, targetOpacity: 0, speed: 2.0 },
+            { group: machObjectiveGroup, mesh: machPanelMesh, currentOpacity: 0, targetOpacity: 0, speed: 2.0 },
+            { group: emergGroup, mesh: emergPanelMesh, currentOpacity: 0, targetOpacity: 0, speed: 2.0 }
+        ];
+
+        // Variabile per gestire il completamento del fade-out del tutorial
+        let tutorialFadeOutDone = false;
 
         function roundRect(ctx, x, y, w, h, r) {
             ctx.beginPath();
@@ -844,7 +853,7 @@
         });
 
         // -----------------------------------------------------------------
-        // TELETRASPORTO E CONTROLLER (invariati)
+        // TELETRASPORTO E CONTROLLER
         // -----------------------------------------------------------------
         const teleportHeight = 0.6, teleportRadius = 0.25;
         const teleportGeo = new THREE.CylinderGeometry(teleportRadius, teleportRadius, teleportHeight, 32, 1, true).translate(0, teleportHeight / 2, 0);
@@ -887,7 +896,7 @@
         controller2.addEventListener('selectstart', onTriggerStart); controller2.addEventListener('selectend', onTriggerEnd);
 
         // -----------------------------------------------------------------
-        // LOOP ANIMAZIONE (invariato)
+        // LOOP ANIMAZIONE
         // -----------------------------------------------------------------
         const raycaster = new THREE.Raycaster();
         const workingMatrix = new THREE.Matrix4();
@@ -896,9 +905,34 @@
         let currentHoverObject = null;
 
         renderer.setAnimationLoop(() => {
+            const delta = clock.getDelta();
             const session = renderer.xr.getSession();
             const time = performance.now() * 0.003;
 
+            // --- GESTIONE FADE OPACITÀ PANNELLI ---
+            panels.forEach(p => {
+                // Interpola verso il target
+                if (Math.abs(p.targetOpacity - p.currentOpacity) > 0.001) {
+                    p.currentOpacity += (p.targetOpacity - p.currentOpacity) * Math.min(1, delta * p.speed);
+                    p.mesh.material.opacity = p.currentOpacity;
+                } else {
+                    p.currentOpacity = p.targetOpacity;
+                    p.mesh.material.opacity = p.currentOpacity;
+                }
+                // Se il target è 0 e l'opacità è praticamente 0, assicurati che il gruppo sia visibile (così non occupa risorse di picking, ma teniamo visible true per sicurezza)
+                // Non forziamo più visible = false, lo gestiamo solo con opacità.
+            });
+
+            // Logica fade-out tutorial completato
+            if (panels[0].targetOpacity === 0 && panels[0].currentOpacity < 0.01 && isTutorialActive && !tutorialFadeOutDone) {
+                // Tutorial completamente scomparso
+                isTutorialActive = false;
+                tutorialFadeOutDone = true;
+                locationPointerGroup1.visible = true;
+                tutorialGroup.visible = false; // ora possiamo spegnerlo per sicurezza
+            }
+
+            // --- RESET HOVER EMISSIVE ---
             if (currentHoverObject && currentHoverObject.material && currentHoverObject.material.emissive) {
                 currentHoverObject.material.emissive.setHex(0x000000);
                 currentHoverObject = null;
@@ -911,8 +945,8 @@
                 if (userPos2D.distanceTo(new THREE.Vector2(targetStage1.x, targetStage1.z)) < 0.5) {
                     stage1Triggered = true;
                     locationPointerGroup1.visible = false;
+                    panels[1].targetOpacity = 1; // mostra scheda DPI
                     disegnaSchedaObiettivoDPI();
-                    objectiveGroup.visible = true;
                 }
             }
 
@@ -924,8 +958,8 @@
                 if (userPos2D.distanceTo(new THREE.Vector2(targetStage2.x, targetStage2.z)) < 0.5) {
                     stage2Triggered = true;
                     locationPointerGroup2.visible = false;
-                    objectiveGroup.visible = false;
-                    machObjectiveGroup.visible = true;
+                    panels[1].targetOpacity = 0; // nascondi scheda DPI
+                    panels[2].targetOpacity = 1; // mostra scheda macchinario
                 }
             }
 
@@ -937,8 +971,8 @@
                 if (userPos2D.distanceTo(new THREE.Vector2(targetStage3.x, targetStage3.z)) < 0.6) {
                     stage3Triggered = true;
                     locationPointerGroup3.visible = false;
-                    machObjectiveGroup.visible = false;
-                    emergGroup.visible = true;
+                    panels[2].targetOpacity = 0; // nascondi scheda macchinario
+                    panels[3].targetOpacity = 1; // mostra scheda emergenza
                     if (rumoreAudio.buffer && !rumoreAudio.isPlaying) rumoreAudio.play();
                 }
             }
@@ -1040,9 +1074,9 @@
                                     if (tutorialIndex < tutorialSlides.length) {
                                         disegnaTutorialHUD();
                                     } else {
-                                        isTutorialActive = false;
-                                        tutorialGroup.visible = false;
-                                        locationPointerGroup1.visible = true;
+                                        // Avvia fade-out del tutorial
+                                        panels[0].targetOpacity = 0;
+                                        tutorialFadeOutDone = false; // reset flag per il callback
                                     }
                                 }
                             } else if (currentHoverObject) {
