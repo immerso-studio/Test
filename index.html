@@ -34,11 +34,13 @@
             disegnaSchedaObiettivoDPI();
             disegnaSchedaObiettivoMacchinario();
             disegnaSchedaEmergenza();
+            disegnaTutorialHUD();
         }).catch(() => {
             fontReady = true;
             disegnaSchedaObiettivoDPI();
             disegnaSchedaObiettivoMacchinario();
             disegnaSchedaEmergenza();
+            disegnaTutorialHUD();
         });
 
         // -----------------------------------------------------------------
@@ -68,7 +70,6 @@
             rumoreAudio.setVolume(0.5);
         }, undefined, (err) => console.warn("Audio rumore.mp3 non trovato."));
 
-        // Suono di selezione
         const selectAudio = new THREE.Audio(audioListener);
         audioLoader.load('assets/audio/select.mp3', (buffer) => {
             selectAudio.setBuffer(buffer);
@@ -95,7 +96,6 @@
         dirLight.position.set(3, 10, 3);
         scene.add(dirLight);
 
-        // Pavimento
         const floor = new THREE.Mesh(
             new THREE.PlaneGeometry(40, 40),
             new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 })
@@ -108,7 +108,6 @@
         grid.position.y = 0.001;
         scene.add(grid);
 
-        // Banco da lavoro
         const table = new THREE.Mesh(
             new THREE.BoxGeometry(2.2, 0.8, 0.8),
             new THREE.MeshStandardMaterial({ color: 0x2b2b2b })
@@ -121,7 +120,7 @@
         const environmentColliders = [floor, table];
 
         // -----------------------------------------------------------------
-        // CARICAMENTO MACCHINARIO E OSTACOLO FISICO
+        // CARICAMENTO MACCHINARIO
         // -----------------------------------------------------------------
         const gltfLoader = new GLTFLoader();
 
@@ -151,24 +150,31 @@
         }, undefined, (error) => { console.warn("Modello macchinario non trovato, procedo senza:", error); });
 
         // -----------------------------------------------------------------
-        // CONFIGURAZIONE DI STATO E DATI DEL TUTORIAL
+        // STATO E DATI DEL TUTORIAL
         // -----------------------------------------------------------------
         let isTutorialActive = true;
         let tutorialIndex = 0;
         let isHoveringButton = false;
 
         const tutorialSlides = [
-            { title: "1. INDICATORE VR", text: "Questo cerchio azzurro mostra la tua prossima destinazione operativa o i punti di interesse attivi nell'area di addestramento.", imgSrc: "assets/tutorial/1.webp", imgObj: null },
-            { title: "2. INTERAZIONE OGGETTI", text: "Punta un oggetto con il raggio laser e premi i tasti 'A' (Controller Destro) o 'X' (Controller Sinistro) per selezionarlo e registrare la tua ispezione.", imgSrc: "assets/tutorial/2.webp", imgObj: null },
-            { title: "3. TELETRASPORTO DI MOVIMENTO", text: "Tieni premuto il Trigger (Grilletto posteriore) per proiettare il raggio di spostamento azzurro. Rilascialo per teletrasportarti nel punto mirato.", imgSrc: "assets/tutorial/3.webp", imgObj: null }
+            { title: "1.  Indicatore VR", text: "Questo cerchio azzurro mostra la tua prossima destinazione operativa o i punti di interesse attivi nell'area di addestramento.", imgSrc: "assets/tutorial/1.webp", imgObj: null },
+            { title: "2.  Interazione oggetti", text: "Punta un oggetto con il raggio laser e premi i tasti 'A' (Controller Destro) o 'X' (Controller Sinistro) per selezionarlo e registrare la tua ispezione.", imgSrc: "assets/tutorial/2.webp", imgObj: null },
+            { title: "3.  Teletrasporto", text: "Tieni premuto il Trigger (Grilletto posteriore) per proiettare il raggio di spostamento azzurro. Rilascialo per teletrasportarti nel punto mirato.", imgSrc: "assets/tutorial/3.webp", imgObj: null }
         ];
 
-        const tutorialCanvas = document.createElement('canvas'); tutorialCanvas.width = 512; tutorialCanvas.height = 512;
+        // Canvas tutorial: proporzioni card screenshot (circa 3:4)
+        const TUT_W = 480;
+        const TUT_H = 800;
+        const tutorialCanvas = document.createElement('canvas');
+        tutorialCanvas.width = TUT_W;
+        tutorialCanvas.height = TUT_H;
         const tutCtx = tutorialCanvas.getContext('2d');
         const tutorialTexture = new THREE.CanvasTexture(tutorialCanvas);
 
+        // Aspect ratio corretto per il PlaneGeometry
+        const tutAspect = TUT_W / TUT_H; // ~0.774
         const tutorialMesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(0.5, 0.5),
+            new THREE.PlaneGeometry(0.5 * tutAspect, 0.5),
             new THREE.MeshBasicMaterial({ map: tutorialTexture, side: THREE.DoubleSide, transparent: true })
         );
         const tutorialGroup = new THREE.Group();
@@ -176,60 +182,164 @@
         camera.add(tutorialGroup);
         tutorialGroup.position.set(0, 0, -0.65);
 
-        function wrapTextCentrato(ctx, text, x, y, maxWidth, lineHeight) {
-            const words = text.split(' '); let line = '';
+        function wrapTextLeft(ctx, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' ');
+            let line = '';
             for (let n = 0; n < words.length; n++) {
-                let testLine = line + words[n] + ' ';
+                const testLine = line + words[n] + ' ';
                 if (ctx.measureText(testLine).width > maxWidth && n > 0) {
-                    ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight;
-                } else { line = testLine; }
-            } ctx.fillText(line, x, y);
+                    ctx.fillText(line.trim(), x, y);
+                    line = words[n] + ' ';
+                    y += lineHeight;
+                } else {
+                    line = testLine;
+                }
+            }
+            ctx.fillText(line.trim(), x, y);
         }
 
         function disegnaTutorialHUD() {
             if (tutorialIndex >= tutorialSlides.length) return;
             const slide = tutorialSlides[tutorialIndex];
+            const font = fontReady ? "'Inter Tight', sans-serif" : 'sans-serif';
+            const W = TUT_W;
+            const H = TUT_H;
+            const PAD = 28;
+            const RADIUS = 20;
 
-            tutCtx.clearRect(0, 0, 512, 512);
-            tutCtx.fillStyle = 'rgba(20, 20, 20, 0.98)'; tutCtx.fillRect(0, 0, 512, 512);
-            tutCtx.strokeStyle = 'rgba(0, 210, 255, 0.4)'; tutCtx.lineWidth = 6; tutCtx.strokeRect(0, 0, 512, 512);
+            tutCtx.clearRect(0, 0, W, H);
 
-            tutCtx.fillStyle = '#ffffff'; tutCtx.font = 'bold 24px sans-serif'; tutCtx.textAlign = 'center';
-            tutCtx.fillText(slide.title, 256, 55);
+            // --- Sfondo card: bianco puro con ombra leggera ---
+            tutCtx.save();
+            // Ombra esterna
+            tutCtx.shadowColor = 'rgba(0,0,0,0.18)';
+            tutCtx.shadowBlur = 28;
+            tutCtx.shadowOffsetY = 6;
+            tutCtx.fillStyle = '#FFFFFF';
+            roundRect(tutCtx, 0, 0, W, H, RADIUS);
+            tutCtx.fill();
+            tutCtx.restore();
 
-            if (slide.imgObj) {
-                const imgSize = 180;
-                tutCtx.drawImage(slide.imgObj, 256 - imgSize / 2, 95, imgSize, imgSize);
+            // --- Immagine in cima (occupa tutta la larghezza, angoli arrotondati solo in alto) ---
+            const IMG_H = W; // immagine quadrata
+            tutCtx.save();
+            tutCtx.beginPath();
+            tutCtx.moveTo(RADIUS, 0);
+            tutCtx.lineTo(W - RADIUS, 0);
+            tutCtx.quadraticCurveTo(W, 0, W, RADIUS);
+            tutCtx.lineTo(W, IMG_H - RADIUS);
+            tutCtx.quadraticCurveTo(W, IMG_H, W - RADIUS, IMG_H);
+            tutCtx.lineTo(RADIUS, IMG_H);
+            tutCtx.quadraticCurveTo(0, IMG_H, 0, IMG_H - RADIUS);
+            tutCtx.lineTo(0, RADIUS);
+            tutCtx.quadraticCurveTo(0, 0, RADIUS, 0);
+            tutCtx.closePath();
+            tutCtx.clip();
+
+            if (slide.imgObj && slide.imgObj.complete) {
+                // Cover-fit: riempi tutta l'area immagine
+                const iW = slide.imgObj.width;
+                const iH = slide.imgObj.height;
+                const scale = Math.max(W / iW, IMG_H / iH);
+                const drawW = iW * scale;
+                const drawH = iH * scale;
+                const drawX = (W - drawW) / 2;
+                const drawY = (IMG_H - drawH) / 2;
+                tutCtx.drawImage(slide.imgObj, drawX, drawY, drawW, drawH);
+            } else {
+                // Placeholder grigio
+                tutCtx.fillStyle = '#C8C8C8';
+                tutCtx.fillRect(0, 0, W, IMG_H);
             }
+            tutCtx.restore();
 
-            tutCtx.fillStyle = '#cccccc'; tutCtx.font = '16px sans-serif'; tutCtx.textAlign = 'center';
-            wrapTextCentrato(tutCtx, slide.text, 256, 315, 420, 24);
+            // --- Badge "Tutorial" (pill bianco con bordo grigio) ---
+            const badgePX = 14, badgePY = 6;
+            tutCtx.font = `500 22px ${font}`;
+            const badgeText = 'Tutorial';
+            const badgeTextW = tutCtx.measureText(badgeText).width;
+            const badgeW = badgeTextW + badgePX * 2;
+            const badgeH = 34;
+            const badgeX = PAD - 4;
+            const badgeY = PAD - 4;
 
-            tutCtx.fillStyle = isHoveringButton ? '#00bcff' : '#0055ff';
-            tutCtx.fillRect(102, 435, 308, 51);
+            tutCtx.save();
+            tutCtx.shadowColor = 'rgba(0,0,0,0.10)';
+            tutCtx.shadowBlur = 6;
+            tutCtx.fillStyle = '#FFFFFF';
+            roundRect(tutCtx, badgeX, badgeY, badgeW, badgeH, badgeH / 2);
+            tutCtx.fill();
+            tutCtx.restore();
 
-            tutCtx.fillStyle = '#ffffff'; tutCtx.font = 'bold 18px sans-serif';
-            tutCtx.fillText(tutorialIndex === tutorialSlides.length - 1 ? "INIZIA TRAINING" : "PROSEGUI (A / X)", 256, 467);
+            // Bordo badge
+            tutCtx.strokeStyle = 'rgba(0,0,0,0.10)';
+            tutCtx.lineWidth = 1.2;
+            roundRect(tutCtx, badgeX, badgeY, badgeW, badgeH, badgeH / 2);
+            tutCtx.stroke();
+
+            // Testo badge
+            tutCtx.fillStyle = '#111111';
+            tutCtx.font = `500 22px ${font}`;
+            tutCtx.textAlign = 'left';
+            tutCtx.fillText(badgeText, badgeX + badgePX, badgeY + badgeH / 2 + 8);
+
+            // --- Area testo (sotto immagine) ---
+            const textTop = IMG_H + 48;
+
+            // Titolo grande, allineato a sinistra, bold
+            tutCtx.fillStyle = '#0D0D0D';
+            tutCtx.font = `700 38px ${font}`;
+            tutCtx.textAlign = 'left';
+            tutCtx.fillText(slide.title, PAD, textTop);
+
+            // Separatore invisibile (spazio)
+            const descTop = textTop + 48;
+
+            // Testo descrittivo: grigio scuro, peso normale
+            tutCtx.fillStyle = '#444444';
+            tutCtx.font = `400 21px ${font}`;
+            tutCtx.textAlign = 'left';
+            wrapTextLeft(tutCtx, slide.text, PAD, descTop, W - PAD * 2, 30);
+
+            // --- Pulsante azzurro in basso a sinistra ---
+            const btnLabel = tutorialIndex === tutorialSlides.length - 1 ? "Inizia training →" : "Prosegui →";
+            tutCtx.font = `700 22px ${font}`;
+            const btnTextW = tutCtx.measureText(btnLabel).width;
+            const btnPX = 28, btnPY = 14;
+            const btnW = btnTextW + btnPX * 2;
+            const btnH = 52;
+            const btnX = PAD;
+            const btnY = H - btnH - PAD;
+
+            tutCtx.fillStyle = isHoveringButton ? '#0072e5' : '#1A8CFF';
+            roundRect(tutCtx, btnX, btnY, btnW, btnH, btnH / 2);
+            tutCtx.fill();
+
+            tutCtx.fillStyle = '#FFFFFF';
+            tutCtx.font = `700 22px ${font}`;
+            tutCtx.textAlign = 'left';
+            tutCtx.fillText(btnLabel, btnX + btnPX, btnY + btnH / 2 + 8);
 
             tutorialTexture.needsUpdate = true;
         }
 
         let loadedImagesCount = 0;
         tutorialSlides.forEach((slide) => {
-            const img = new Image(); img.src = slide.imgSrc;
+            const img = new Image();
+            img.src = slide.imgSrc;
             img.onload = () => {
-                slide.imgObj = img; loadedImagesCount++;
+                slide.imgObj = img;
+                loadedImagesCount++;
                 if (loadedImagesCount === tutorialSlides.length) disegnaTutorialHUD();
             };
         });
 
         // -----------------------------------------------------------------
-        // CONFIGURAZIONE LOCATION POINTERS
+        // LOCATION POINTERS
         // -----------------------------------------------------------------
         const stageMarkerMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
         const coneGeo = new THREE.ConeGeometry(0.08, 0.2, 4).rotateX(Math.PI);
 
-        // TAPPA 1: Banco da lavoro
         const targetStage1 = new THREE.Vector3(0, 0.01, -0.6);
         let stage1Triggered = false;
         const locationPointerGroup1 = new THREE.Group();
@@ -242,7 +352,6 @@
         stageTriangle1.position.y = 0.5;
         locationPointerGroup1.add(stageMarker1); locationPointerGroup1.add(stageTriangle1);
 
-        // TAPPA 2: Macchinario
         const targetStage2 = new THREE.Vector3(3.30, 0.01, -3.30);
         let stage2Triggered = false;
         const locationPointerGroup2 = new THREE.Group();
@@ -254,7 +363,6 @@
         const stageTriangle2 = stageTriangle1.clone();
         locationPointerGroup2.add(stageMarker2); locationPointerGroup2.add(stageTriangle2);
 
-        // TAPPA 3: Allarme Emergenza Macchinario
         const targetStage3 = new THREE.Vector3(3, 0.01, -5);
         let stage3Triggered = false;
         let emergenzaRisolta = false;
@@ -267,48 +375,39 @@
         const stageTriangle3 = stageTriangle1.clone();
         locationPointerGroup3.add(stageMarker3); locationPointerGroup3.add(stageTriangle3);
 
-        // Variabili Logica DPI (Fase 1)
         const inspectedObjects = new Set();
         const totalObjectsToInspect = 3;
         let taskCompleted = false;
 
-        // Variabili Logica Macchinario (Fase 2)
         const macchinarioInspectedObjects = new Set();
         const totalMacchinarioObjects = 2;
         let macchinarioTaskCompleted = false;
 
-        // Dati DPI per la scheda
         const ppeDati = [
             { id: "caschetto", url: 'assets/safety/caschetto.glb', pos: new THREE.Vector3(-0.6, 0.8, -1.5), title: "Caschetto di Sicurezza", info: "Protegge il capo da urti accidentali e caduta di materiali. Controlla sempre l'integrità della calotta prima dell'uso.", imgSrc: 'assets/safety/img/1.webp', imgObj: null },
             { id: "occhiali", url: 'assets/safety/occhiali.glb', pos: new THREE.Vector3(0, 0.8, -1.5), title: "Occhiali Protettivi", info: "Ripara gli occhi da schegge, polvere e schizzi di liquidi pericolosi. Verifica che le lenti siano intatte e pulite.", imgSrc: 'assets/safety/img/2.webp', imgObj: null },
             { id: "guanti", url: 'assets/safety/guanti.glb', pos: new THREE.Vector3(0.6, 0.8, -1.5), title: "Guanti da Lavoro", info: "Garantiscono una presa sicura e proteggono le mani da tagli o abrasioni. Assicurati che non presentino strappi o usura.", imgSrc: 'assets/safety/img/3.webp', imgObj: null }
         ];
 
-        // Caricamento immagini DPI
         ppeDati.forEach(dpi => {
             const img = new Image();
             img.src = dpi.imgSrc;
-            img.onload = () => {
-                dpi.imgObj = img;
-                disegnaSchedaObiettivoDPI();
-            };
+            img.onload = () => { dpi.imgObj = img; disegnaSchedaObiettivoDPI(); };
             img.onerror = () => console.warn(`Immagine DPI non trovata: ${dpi.imgSrc}`);
         });
 
-        // Dati per le card del macchinario
         const macchinarioCardsData = [
             { id: "cabina", title: "Cabina di Controllo", info: "Pannello principale per la gestione della macchina. Verificare che non vi siano spie d'allarme attive.", icon: '⚙️' },
             { id: "tasto_emergenza", title: "Pulsante di Emergenza", info: "Blocca istantaneamente l'alimentazione in caso di pericolo. Assicurati che sia ben visibile e non ostruito.", icon: '🔴' }
         ];
 
         // -----------------------------------------------------------------
-        // SCHEDA OBIETTIVO DPI (Fase 1) — Grande pannello
+        // SCHEDA OBIETTIVO DPI
         // -----------------------------------------------------------------
         const DPI_CANVAS_W = 1024;
         const DPI_CANVAS_H = 680;
         const objCanvas = document.createElement('canvas');
-        objCanvas.width = DPI_CANVAS_W;
-        objCanvas.height = DPI_CANVAS_H;
+        objCanvas.width = DPI_CANVAS_W; objCanvas.height = DPI_CANVAS_H;
         const objCtx = objCanvas.getContext('2d');
         const objTexture = new THREE.CanvasTexture(objCanvas);
 
@@ -323,11 +422,10 @@
         objectiveGroup.visible = false;
 
         // -----------------------------------------------------------------
-        // SCHEDA OBIETTIVO MACCHINARIO (Fase 2) — Stesso stile grande
+        // SCHEDA OBIETTIVO MACCHINARIO
         // -----------------------------------------------------------------
         const machCanvas = document.createElement('canvas');
-        machCanvas.width = DPI_CANVAS_W;
-        machCanvas.height = DPI_CANVAS_H;
+        machCanvas.width = DPI_CANVAS_W; machCanvas.height = DPI_CANVAS_H;
         const machCtx = machCanvas.getContext('2d');
         const machTexture = new THREE.CanvasTexture(machCanvas);
 
@@ -343,11 +441,10 @@
         machObjectiveGroup.visible = false;
 
         // -----------------------------------------------------------------
-        // SCHEDA EMERGENZA (Fase 3) — Semplice
+        // SCHEDA EMERGENZA
         // -----------------------------------------------------------------
         const emergCanvas = document.createElement('canvas');
-        emergCanvas.width = DPI_CANVAS_W;
-        emergCanvas.height = DPI_CANVAS_H;
+        emergCanvas.width = DPI_CANVAS_W; emergCanvas.height = DPI_CANVAS_H;
         const emergCtx = emergCanvas.getContext('2d');
         const emergTexture = new THREE.CanvasTexture(emergCanvas);
 
@@ -376,10 +473,18 @@
             ctx.closePath();
         }
 
-        // Disegna scheda DPI (con check al completamento)
+        function wrapTextCentrato(ctx, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(' '); let line = '';
+            for (let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + ' ';
+                if (ctx.measureText(testLine).width > maxWidth && n > 0) {
+                    ctx.fillText(line, x, y); line = words[n] + ' '; y += lineHeight;
+                } else { line = testLine; }
+            } ctx.fillText(line, x, y);
+        }
+
         function disegnaSchedaObiettivoDPI() {
-            const W = DPI_CANVAS_W;
-            const H = DPI_CANVAS_H;
+            const W = DPI_CANVAS_W, H = DPI_CANVAS_H;
             const font = fontReady ? "'Inter Tight'" : 'sans-serif';
 
             objCtx.clearRect(0, 0, W, H);
@@ -388,13 +493,10 @@
             objCtx.fill();
 
             if (taskCompleted) {
-                // Check grande
                 objCtx.fillStyle = '#22c55e';
                 objCtx.font = `100px ${font}`;
                 objCtx.textAlign = 'center';
                 objCtx.fillText('✔', W / 2, H / 2 - 40);
-
-                // Testo completamento
                 objCtx.font = `700 52px ${font}`;
                 objCtx.fillText('Procedi al prossimo livello', W / 2, H / 2 + 50);
             } else {
@@ -423,11 +525,7 @@
                 objCtx.lineTo(W - 40, 210);
                 objCtx.stroke();
 
-                const cardW = 286;
-                const cardH = 400;
-                const cardY = 228;
-                const cardStartX = 40;
-                const cardGap = 26;
+                const cardW = 286, cardH = 400, cardY = 228, cardStartX = 40, cardGap = 26;
 
                 ppeDati.forEach((dpi, i) => {
                     const cx = cardStartX + i * (cardW + cardGap);
@@ -437,13 +535,8 @@
                     roundRect(objCtx, cx, cardY, cardW, cardH, 16);
                     objCtx.fill();
 
-                    if (isSelected) {
-                        objCtx.strokeStyle = '#22c55e';
-                        objCtx.lineWidth = 3;
-                    } else {
-                        objCtx.strokeStyle = 'rgba(0,0,0,0.08)';
-                        objCtx.lineWidth = 1.5;
-                    }
+                    objCtx.strokeStyle = isSelected ? '#22c55e' : 'rgba(0,0,0,0.08)';
+                    objCtx.lineWidth = isSelected ? 3 : 1.5;
                     roundRect(objCtx, cx, cardY, cardW, cardH, 16);
                     objCtx.stroke();
 
@@ -455,20 +548,16 @@
                     roundRect(objCtx, cx + 12, cardY + 12, cardW - 24, 210, 10);
                     objCtx.clip();
                     if (dpi.imgObj && dpi.imgObj.complete) {
-                        const imgW = dpi.imgObj.width;
-                        const imgH = dpi.imgObj.height;
-                        const maxW = cardW - 24;
-                        const maxH = 210;
+                        const imgW = dpi.imgObj.width, imgH = dpi.imgObj.height;
+                        const maxW = cardW - 24, maxH = 210;
                         const scale = Math.min(maxW / imgW, maxH / imgH);
-                        const drawW = imgW * scale;
-                        const drawH = imgH * scale;
-                        const drawX = cx + 12 + (maxW - drawW) / 2;
-                        const drawY = cardY + 12 + (maxH - drawH) / 2;
-                        objCtx.drawImage(dpi.imgObj, drawX, drawY, drawW, drawH);
+                        const drawW = imgW * scale, drawH = imgH * scale;
+                        objCtx.drawImage(dpi.imgObj, cx + 12 + (maxW - drawW) / 2, cardY + 12 + (maxH - drawH) / 2, drawW, drawH);
                     } else {
                         const icons = ['🪖', '🥽', '🧤'];
                         objCtx.font = '72px sans-serif';
                         objCtx.textAlign = 'center';
+                        objCtx.fillStyle = '#ffffff';
                         objCtx.fillText(icons[i], cx + cardW / 2, cardY + 137);
                     }
                     objCtx.restore();
@@ -542,10 +631,8 @@
             objTexture.needsUpdate = true;
         }
 
-        // Disegna scheda Macchinario (con check al completamento)
         function disegnaSchedaObiettivoMacchinario() {
-            const W = DPI_CANVAS_W;
-            const H = DPI_CANVAS_H;
+            const W = DPI_CANVAS_W, H = DPI_CANVAS_H;
             const font = fontReady ? "'Inter Tight'" : 'sans-serif';
 
             machCtx.clearRect(0, 0, W, H);
@@ -558,7 +645,6 @@
                 machCtx.font = `100px ${font}`;
                 machCtx.textAlign = 'center';
                 machCtx.fillText('✔', W / 2, H / 2 - 40);
-
                 machCtx.font = `700 52px ${font}`;
                 machCtx.fillText('Procedi al prossimo livello', W / 2, H / 2 + 50);
             } else {
@@ -587,11 +673,7 @@
                 machCtx.lineTo(W - 40, 210);
                 machCtx.stroke();
 
-                const cardW = 420;
-                const cardH = 400;
-                const cardY = 228;
-                const cardStartX = 80;
-                const cardGap = 40;
+                const cardW = 420, cardH = 400, cardY = 228, cardStartX = 80, cardGap = 40;
 
                 macchinarioCardsData.forEach((comp, i) => {
                     const cx = cardStartX + i * (cardW + cardGap);
@@ -601,13 +683,8 @@
                     roundRect(machCtx, cx, cardY, cardW, cardH, 16);
                     machCtx.fill();
 
-                    if (isSelected) {
-                        machCtx.strokeStyle = '#22c55e';
-                        machCtx.lineWidth = 3;
-                    } else {
-                        machCtx.strokeStyle = 'rgba(0,0,0,0.08)';
-                        machCtx.lineWidth = 1.5;
-                    }
+                    machCtx.strokeStyle = isSelected ? '#22c55e' : 'rgba(0,0,0,0.08)';
+                    machCtx.lineWidth = isSelected ? 3 : 1.5;
                     roundRect(machCtx, cx, cardY, cardW, cardH, 16);
                     machCtx.stroke();
 
@@ -689,10 +766,8 @@
             machTexture.needsUpdate = true;
         }
 
-        // NUOVA FUNZIONE SCHEDA EMERGENZA (Livello 3) – semplice, senza card
         function disegnaSchedaEmergenza() {
-            const W = DPI_CANVAS_W;
-            const H = DPI_CANVAS_H;
+            const W = DPI_CANVAS_W, H = DPI_CANVAS_H;
             const font = fontReady ? "'Inter Tight'" : 'sans-serif';
 
             emergCtx.clearRect(0, 0, W, H);
@@ -701,16 +776,13 @@
             emergCtx.fill();
 
             if (emergenzaRisolta) {
-                // Stato completato: check + testo
                 emergCtx.fillStyle = '#22c55e';
                 emergCtx.font = `100px ${font}`;
                 emergCtx.textAlign = 'center';
                 emergCtx.fillText('✔', W / 2, H / 2 - 40);
-
                 emergCtx.font = `700 52px ${font}`;
                 emergCtx.fillText('Procedi al prossimo livello', W / 2, H / 2 + 50);
             } else {
-                // Badge Livello 3
                 const badgeW = 210, badgeH = 42;
                 emergCtx.fillStyle = '#ef4444';
                 roundRect(emergCtx, 40, 32, badgeW, badgeH, 21);
@@ -721,19 +793,16 @@
                 const measureBadge = emergCtx.measureText('Livello 3');
                 emergCtx.fillText('Livello 3', 40 + (badgeW - measureBadge.width) / 2, 59);
 
-                // Titolo
                 emergCtx.fillStyle = '#111111';
                 emergCtx.font = `700 58px ${font}`;
                 emergCtx.textAlign = 'center';
                 emergCtx.fillText('Emergenza Macchinario', W / 2, 145);
 
-                // Simbolo di pericolo grande
                 emergCtx.fillStyle = '#ef4444';
                 emergCtx.font = `150px sans-serif`;
                 emergCtx.textAlign = 'center';
                 emergCtx.fillText('⚠️', W / 2, H / 2 - 20);
 
-                // Istruzione in rosso
                 emergCtx.fillStyle = '#ef4444';
                 emergCtx.font = `700 32px ${font}`;
                 emergCtx.textAlign = 'center';
@@ -743,19 +812,20 @@
             emergTexture.needsUpdate = true;
         }
 
-        // Inizializzazione disegni
         disegnaSchedaObiettivoDPI();
         disegnaSchedaObiettivoMacchinario();
         disegnaSchedaEmergenza();
 
-        // Caricamento modelli 3D DPI
         ppeDati.forEach((data) => {
             gltfLoader.load(data.url, (gltf) => {
-                const model = gltf.scene; model.position.copy(data.pos);
+                const model = gltf.scene;
+                model.position.copy(data.pos);
                 model.traverse((child) => {
                     if (child.isMesh) {
-                        child.userData.isInteractable = true; child.userData.id = data.id;
-                        child.userData.title = data.title; child.userData.info = data.info;
+                        child.userData.isInteractable = true;
+                        child.userData.id = data.id;
+                        child.userData.title = data.title;
+                        child.userData.info = data.info;
                         child.userData.isFaseMacchinario = false;
                         interactables.push(child);
                     }
@@ -764,8 +834,10 @@
             }, null, (error) => { console.error(`Errore caricamento ${data.id}:`, error); });
         });
 
-        // Setup Teletrasporto, Controller & Laser
-        const teleportHeight = 0.6; const teleportRadius = 0.25;
+        // -----------------------------------------------------------------
+        // TELETRASPORTO E CONTROLLER
+        // -----------------------------------------------------------------
+        const teleportHeight = 0.6, teleportRadius = 0.25;
         const teleportGeo = new THREE.CylinderGeometry(teleportRadius, teleportRadius, teleportHeight, 32, 1, true).translate(0, teleportHeight / 2, 0);
         const teleportMat = new THREE.ShaderMaterial({
             uniforms: { uColor: { value: new THREE.Color(0x00d2ff) } },
@@ -773,9 +845,12 @@
             fragmentShader: `varying vec2 vUv; uniform vec3 uColor; void main() { float alpha = 1.0 - vUv.y; alpha = pow(alpha, 1.5); gl_FragColor = vec4(uColor, alpha); }`,
             transparent: true, side: THREE.DoubleSide, depthWrite: false
         });
-        const teleportMarker = new THREE.Mesh(teleportGeo, teleportMat); teleportMarker.visible = false; scene.add(teleportMarker);
+        const teleportMarker = new THREE.Mesh(teleportGeo, teleportMat);
+        teleportMarker.visible = false;
+        scene.add(teleportMarker);
 
-        const controller1 = renderer.xr.getController(0); const controller2 = renderer.xr.getController(1);
+        const controller1 = renderer.xr.getController(0);
+        const controller2 = renderer.xr.getController(1);
         cameraRig.add(controller1); cameraRig.add(controller2);
 
         const controllerModelFactory = new XRControllerModelFactory();
@@ -787,17 +862,13 @@
         const line1 = new THREE.Line(laserGeo, laserMat); line1.name = 'line'; line1.scale.z = 10; controller1.add(line1);
         const line2 = new THREE.Line(laserGeo, laserMat.clone()); line2.name = 'line'; line2.scale.z = 10; controller2.add(line2);
 
-        let isTeleportMode = false; let activeTeleportController = null; let teleportPoint = new THREE.Vector3();
-        let isTeleportValid = false; // <-- nuovo flag per la validità della destinazione
+        let isTeleportMode = false, activeTeleportController = null;
+        const teleportPoint = new THREE.Vector3();
+        let isTeleportValid = false;
 
-        function onTriggerStart(event) {
-            if (isTutorialActive) return;
-            activeTeleportController = event.target; isTeleportMode = true;
-        }
-
+        function onTriggerStart(event) { if (isTutorialActive) return; activeTeleportController = event.target; isTeleportMode = true; }
         function onTriggerEnd(event) {
             if (isTutorialActive) return;
-            // Teletrasporto consentito solo se il marker è valido (azzurro)
             if (isTeleportMode && isTeleportValid && teleportMarker.visible && activeTeleportController === event.target) {
                 cameraRig.position.set(teleportPoint.x, cameraRig.position.y, teleportPoint.z);
             }
@@ -807,13 +878,13 @@
         controller2.addEventListener('selectstart', onTriggerStart); controller2.addEventListener('selectend', onTriggerEnd);
 
         // -----------------------------------------------------------------
-        // LOOP ANIMAZIONE PRINCIPALE (senza pannello informativo)
+        // LOOP ANIMAZIONE
         // -----------------------------------------------------------------
         const raycaster = new THREE.Raycaster();
         const workingMatrix = new THREE.Matrix4();
         const MAX_LASER_RANGE = 10;
         const prevButtonsState = { left: false, right: false };
-        let currentHoverObject = null; // solo per highlight
+        let currentHoverObject = null;
 
         renderer.setAnimationLoop(() => {
             const session = renderer.xr.getSession();
@@ -824,15 +895,11 @@
                 currentHoverObject = null;
             }
 
-            // TAPPA 1 LOGIC
             if (!isTutorialActive && !stage1Triggered) {
                 stageMarkerMat.opacity = 0.3 + Math.sin(time * 2) * 0.4;
                 stageTriangle1.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
-
                 const userPos2D = new THREE.Vector2(cameraRig.position.x, cameraRig.position.z);
-                const targetPos2D = new THREE.Vector2(targetStage1.x, targetStage1.z);
-
-                if (userPos2D.distanceTo(targetPos2D) < 0.5) {
+                if (userPos2D.distanceTo(new THREE.Vector2(targetStage1.x, targetStage1.z)) < 0.5) {
                     stage1Triggered = true;
                     locationPointerGroup1.visible = false;
                     disegnaSchedaObiettivoDPI();
@@ -840,16 +907,12 @@
                 }
             }
 
-            // TAPPA 2 LOGIC
             if (taskCompleted && !stage2Triggered) {
                 locationPointerGroup2.visible = true;
                 stageMarkerMat.opacity = 0.3 + Math.sin(time * 2) * 0.4;
                 stageTriangle2.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
-
                 const userPos2D = new THREE.Vector2(cameraRig.position.x, cameraRig.position.z);
-                const targetPos2D2 = new THREE.Vector2(targetStage2.x, targetStage2.z);
-
-                if (userPos2D.distanceTo(targetPos2D2) < 0.5) {
+                if (userPos2D.distanceTo(new THREE.Vector2(targetStage2.x, targetStage2.z)) < 0.5) {
                     stage2Triggered = true;
                     locationPointerGroup2.visible = false;
                     objectiveGroup.visible = false;
@@ -857,28 +920,20 @@
                 }
             }
 
-            // TAPPA 3 LOGIC (Allarme)
             if (macchinarioTaskCompleted && !stage3Triggered) {
                 locationPointerGroup3.visible = true;
                 stageMarkerMat.opacity = 0.3 + Math.sin(time * 2) * 0.4;
                 stageTriangle3.position.y = 0.5 + Math.sin(time * 2.5) * 0.06;
-
                 const userPos2D = new THREE.Vector2(cameraRig.position.x, cameraRig.position.z);
-                const targetPos2D3 = new THREE.Vector2(targetStage3.x, targetStage3.z);
-
-                if (userPos2D.distanceTo(targetPos2D3) < 0.6) {
+                if (userPos2D.distanceTo(new THREE.Vector2(targetStage3.x, targetStage3.z)) < 0.6) {
                     stage3Triggered = true;
                     locationPointerGroup3.visible = false;
                     machObjectiveGroup.visible = false;
                     emergGroup.visible = true;
-
-                    if (rumoreAudio.buffer && !rumoreAudio.isPlaying) {
-                        rumoreAudio.play();
-                    }
+                    if (rumoreAudio.buffer && !rumoreAudio.isPlaying) rumoreAudio.play();
                 }
             }
 
-            // Aggiorna elenco location pointer attivi (per il controllo del teletrasporto)
             const activeTargets = [];
             if (locationPointerGroup1.visible) activeTargets.push(targetStage1);
             if (locationPointerGroup2.visible) activeTargets.push(targetStage2);
@@ -903,7 +958,15 @@
                         if (tutIntersects.length > 0) {
                             currentRayLength = tutIntersects[0].distance;
                             const uv = tutIntersects[0].uv;
-                            if (uv.x >= 0.2 && uv.x <= 0.8 && uv.y >= 0.05 && uv.y <= 0.15) {
+                            // Area pulsante: bottom-left, pill azzurro
+                            // Nel canvas: btnX=PAD(28), btnY=H-btnH-PAD, btnW=variabile
+                            // In UV: x da 28/480 a circa (28+220)/480, y da PAD/620 a (PAD+52)/620
+                            // UV y è invertita (0=bottom, 1=top)
+                            const uvBtnXmin = 28 / TUT_W;
+                            const uvBtnXmax = 280 / TUT_W; // larghezza generosa
+                            const uvBtnYmin = 28 / TUT_H;  // UV y basso
+                            const uvBtnYmax = 100 / TUT_H;
+                            if (uv.x >= uvBtnXmin && uv.x <= uvBtnXmax && uv.y >= uvBtnYmin && uv.y <= uvBtnYmax) {
                                 hoveringThisFrame = true;
                             }
                         }
@@ -911,7 +974,8 @@
                     } else {
                         const objIntersects = raycaster.intersectObjects(interactables);
                         if (objIntersects.length > 0) {
-                            currentHoverObject = objIntersects[0].object; currentRayLength = objIntersects[0].distance;
+                            currentHoverObject = objIntersects[0].object;
+                            currentRayLength = objIntersects[0].distance;
                             if (!isTeleportMode && currentHoverObject.material && currentHoverObject.material.emissive) {
                                 currentHoverObject.material.emissive.setHex(0x333333);
                             }
@@ -926,12 +990,11 @@
                                 if (hitObj.name === 'floor') {
                                     currentRayLength = hitDist;
                                     teleportPoint.copy(teleportIntersects[0].point);
-                                    teleportMarker.position.copy(teleportPoint).y = 0.001;
+                                    teleportMarker.position.copy(teleportPoint);
+                                    teleportMarker.position.y = 0.001;
                                     teleportMarker.visible = true;
 
-                                    // Verifica prossimità a uno dei location pointer attivi
                                     if (activeTargets.length === 0) {
-                                        // Nessuna tappa attiva => teletrasporto libero (azzurro)
                                         isTeleportValid = true;
                                         teleportMat.uniforms.uColor.value.setHex(0x00d2ff);
                                     } else {
@@ -939,17 +1002,12 @@
                                         for (const target of activeTargets) {
                                             const dx = teleportPoint.x - target.x;
                                             const dz = teleportPoint.z - target.z;
-                                            const dist = Math.sqrt(dx * dx + dz * dz);
-                                            if (dist < 0.35) { // raggio interno dell'anello
-                                                valid = true;
-                                                break;
-                                            }
+                                            if (Math.sqrt(dx * dx + dz * dz) < 0.35) { valid = true; break; }
                                         }
                                         isTeleportValid = valid;
                                         teleportMat.uniforms.uColor.value.setHex(valid ? 0x00d2ff : 0xff0000);
                                     }
                                 } else {
-                                    // Puntando un oggetto diverso dal pavimento, disabilita teletrasporto
                                     currentRayLength = hitDist;
                                     teleportMarker.visible = false;
                                     isTeleportValid = false;
@@ -986,21 +1044,18 @@
                                 playSelectSound();
                                 const data = currentHoverObject.userData;
 
-                                // EMERGENZA (TAPPA 3)
                                 if (stage3Triggered && !emergenzaRisolta && data.id === "tasto_emergenza") {
                                     emergenzaRisolta = true;
                                     if (rumoreAudio.isPlaying) rumoreAudio.stop();
                                     disegnaSchedaEmergenza();
                                 }
 
-                                // DPI (FASE 1)
                                 if (stage1Triggered && !taskCompleted && !data.isFaseMacchinario) {
                                     inspectedObjects.add(data.id);
                                     if (inspectedObjects.size === totalObjectsToInspect) taskCompleted = true;
                                     disegnaSchedaObiettivoDPI();
                                 }
 
-                                // MACCHINARIO (FASE 2) – senza popup, solo registrazione
                                 if (stage2Triggered && !macchinarioTaskCompleted && data.isFaseMacchinario) {
                                     macchinarioInspectedObjects.add(data.id);
                                     if (macchinarioInspectedObjects.size === totalMacchinarioObjects) macchinarioTaskCompleted = true;
@@ -1017,11 +1072,13 @@
                     disegnaTutorialHUD();
                 }
             }
+
             renderer.render(scene, camera);
         });
 
         window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
     </script>
