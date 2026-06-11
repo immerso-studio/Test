@@ -22,6 +22,7 @@
         import { VRButton } from 'three/addons/webxr/VRButton.js';
         import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
         // -----------------------------------------------------------------
         // PRELOAD INTER TIGHT FONT
@@ -47,6 +48,7 @@
         // CONFIGURAZIONE AMBIENTE E CAMERA RIG
         // -----------------------------------------------------------------
         const scene = new THREE.Scene();
+        // Sfondo iniziale (verrà sostituito dall'HDRI)
         scene.background = new THREE.Color(0x1a1a1a);
         scene.fog = new THREE.FogExp2(0x2a2a3a, 0.02);
 
@@ -88,39 +90,29 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.xr.enabled = true;
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        // --- OMBRE DINAMICHE DISATTIVATE ---
+        renderer.shadowMap.enabled = false;
         document.body.appendChild(renderer.domElement);
         document.body.appendChild(VRButton.createButton(renderer));
 
-        // ----- LUCI PIÙ FORTI E REALISTICHE -----
+        // ----- LUCI (senza ombre) -----
         scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.8));
         scene.add(new THREE.AmbientLight(0x334455, 0.6));
 
         const dirLight = new THREE.DirectionalLight(0xfff5e6, 2.5);
         dirLight.position.set(4, 12, 6);
-        dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 1024;
-        dirLight.shadow.mapSize.height = 1024;
-        dirLight.shadow.camera.near = 0.5;
-        dirLight.shadow.camera.far = 50;
-        dirLight.shadow.camera.left = -8;
-        dirLight.shadow.camera.right = 8;
-        dirLight.shadow.camera.top = 8;
-        dirLight.shadow.camera.bottom = -8;
-        dirLight.shadow.bias = -0.0001;
         scene.add(dirLight);
 
         // -----------------------------------------------------------------
-        // PAVIMENTO E GRIGLIA
+        // PAVIMENTO E GRIGLIA (sempre visibili, anche dopo il capannone)
         // -----------------------------------------------------------------
         const floor = new THREE.Mesh(
             new THREE.PlaneGeometry(40, 40),
             new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.85 })
         );
         floor.rotation.x = -Math.PI / 2;
+        floor.position.y = -0.01; // leggermente sotto per evitare z-fighting con il capannone
         floor.name = 'floor';
-        floor.receiveShadow = true;
         scene.add(floor);
 
         const grid = new THREE.GridHelper(40, 40, 0x444444, 0x333333);
@@ -133,12 +125,38 @@
         );
         table.position.set(0, 0.4, -1.5);
         table.name = 'table';
-        table.castShadow = true;
-        table.receiveShadow = true;
         scene.add(table);
 
         const interactables = [];
         const environmentColliders = [floor, table];
+
+        // -----------------------------------------------------------------
+        // CARICAMENTO CAPANNONE (AMBIENTE 3D)
+        // -----------------------------------------------------------------
+        const warehouseLoader = new GLTFLoader();
+        warehouseLoader.load('assets/warehouse.glb', (gltf) => {
+            const warehouseModel = gltf.scene;
+            warehouseModel.position.set(0, 0, 0);
+            warehouseModel.name = 'warehouse';
+            scene.add(warehouseModel);
+            // Aggiorna i collider per il teletrasporto (il pavimento rimane comunque)
+            environmentColliders.push(warehouseModel);
+        }, undefined, (error) => {
+            console.warn("Modello warehouse non trovato, mantengo solo pavimento base:", error);
+        });
+
+        // -----------------------------------------------------------------
+        // CARICAMENTO HDRI (CONTESTO ESTERNO)
+        // -----------------------------------------------------------------
+        const rgbeLoader = new RGBELoader();
+        rgbeLoader.load('assets/hdri/outside.hdr', (texture) => {
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            scene.background = texture;
+            scene.environment = texture;
+        }, undefined, (error) => {
+            console.warn("HDRI non trovato, uso sfondo colore solido:", error);
+            scene.background = new THREE.Color(0x1a1a1a);
+        });
 
         // -----------------------------------------------------------------
         // CARICAMENTO MACCHINARIO
@@ -156,8 +174,6 @@
             machineModel.name = 'macchinario';
             machineModel.traverse((child) => {
                 if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
                     if (componentiMacchinario[child.name]) {
                         const datiComponente = componentiMacchinario[child.name];
                         child.userData.isInteractable = true;
@@ -425,7 +441,7 @@
         objectiveGroup.add(objPanelMesh);
         scene.add(objectiveGroup);
         objectiveGroup.position.set(0, 1.6, -2.1);
-        objectiveGroup.visible = true; // sempre visibile, ma opacità a 0
+        objectiveGroup.visible = true;
 
         const machCanvas = document.createElement('canvas');
         machCanvas.width = DPI_CANVAS_W; machCanvas.height = DPI_CANVAS_H;
@@ -465,13 +481,12 @@
         const clock = new THREE.Clock();
 
         const panels = [
-            { group: tutorialGroup, mesh: tutorialMesh, currentOpacity: 0, targetOpacity: 1, speed: 2.5 }, // inizia subito a comparire
+            { group: tutorialGroup, mesh: tutorialMesh, currentOpacity: 0, targetOpacity: 1, speed: 2.5 },
             { group: objectiveGroup, mesh: objPanelMesh, currentOpacity: 0, targetOpacity: 0, speed: 2.0 },
             { group: machObjectiveGroup, mesh: machPanelMesh, currentOpacity: 0, targetOpacity: 0, speed: 2.0 },
             { group: emergGroup, mesh: emergPanelMesh, currentOpacity: 0, targetOpacity: 0, speed: 2.0 }
         ];
 
-        // Variabile per gestire il completamento del fade-out del tutorial
         let tutorialFadeOutDone = false;
 
         function roundRect(ctx, x, y, w, h, r) {
@@ -831,15 +846,13 @@
         disegnaSchedaObiettivoMacchinario();
         disegnaSchedaEmergenza();
 
-        // ----- CARICAMENTO DPI CON OMBRE -----
+        // ----- CARICAMENTO DPI (senza ombre dinamiche) -----
         ppeDati.forEach((data) => {
             gltfLoader.load(data.url, (gltf) => {
                 const model = gltf.scene;
                 model.position.copy(data.pos);
                 model.traverse((child) => {
                     if (child.isMesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
                         child.userData.isInteractable = true;
                         child.userData.id = data.id;
                         child.userData.title = data.title;
@@ -911,7 +924,6 @@
 
             // --- GESTIONE FADE OPACITÀ PANNELLI ---
             panels.forEach(p => {
-                // Interpola verso il target
                 if (Math.abs(p.targetOpacity - p.currentOpacity) > 0.001) {
                     p.currentOpacity += (p.targetOpacity - p.currentOpacity) * Math.min(1, delta * p.speed);
                     p.mesh.material.opacity = p.currentOpacity;
@@ -919,17 +931,13 @@
                     p.currentOpacity = p.targetOpacity;
                     p.mesh.material.opacity = p.currentOpacity;
                 }
-                // Se il target è 0 e l'opacità è praticamente 0, assicurati che il gruppo sia visibile (così non occupa risorse di picking, ma teniamo visible true per sicurezza)
-                // Non forziamo più visible = false, lo gestiamo solo con opacità.
             });
 
-            // Logica fade-out tutorial completato
             if (panels[0].targetOpacity === 0 && panels[0].currentOpacity < 0.01 && isTutorialActive && !tutorialFadeOutDone) {
-                // Tutorial completamente scomparso
                 isTutorialActive = false;
                 tutorialFadeOutDone = true;
                 locationPointerGroup1.visible = true;
-                tutorialGroup.visible = false; // ora possiamo spegnerlo per sicurezza
+                tutorialGroup.visible = false;
             }
 
             // --- RESET HOVER EMISSIVE ---
@@ -945,7 +953,7 @@
                 if (userPos2D.distanceTo(new THREE.Vector2(targetStage1.x, targetStage1.z)) < 0.5) {
                     stage1Triggered = true;
                     locationPointerGroup1.visible = false;
-                    panels[1].targetOpacity = 1; // mostra scheda DPI
+                    panels[1].targetOpacity = 1;
                     disegnaSchedaObiettivoDPI();
                 }
             }
@@ -958,8 +966,8 @@
                 if (userPos2D.distanceTo(new THREE.Vector2(targetStage2.x, targetStage2.z)) < 0.5) {
                     stage2Triggered = true;
                     locationPointerGroup2.visible = false;
-                    panels[1].targetOpacity = 0; // nascondi scheda DPI
-                    panels[2].targetOpacity = 1; // mostra scheda macchinario
+                    panels[1].targetOpacity = 0;
+                    panels[2].targetOpacity = 1;
                 }
             }
 
@@ -971,8 +979,8 @@
                 if (userPos2D.distanceTo(new THREE.Vector2(targetStage3.x, targetStage3.z)) < 0.6) {
                     stage3Triggered = true;
                     locationPointerGroup3.visible = false;
-                    panels[2].targetOpacity = 0; // nascondi scheda macchinario
-                    panels[3].targetOpacity = 1; // mostra scheda emergenza
+                    panels[2].targetOpacity = 0;
+                    panels[3].targetOpacity = 1;
                     if (rumoreAudio.buffer && !rumoreAudio.isPlaying) rumoreAudio.play();
                 }
             }
@@ -1022,13 +1030,20 @@
 
                         const teleportIntersects = raycaster.intersectObjects(environmentColliders, true);
                         if (teleportIntersects.length > 0) {
-                            const hitObj = teleportIntersects[0].object;
-                            const hitDist = teleportIntersects[0].distance;
+                            const hit = teleportIntersects[0];
+                            const hitObj = hit.object;
+                            const hitDist = hit.distance;
 
                             if (isTeleportMode && controller === activeTeleportController) {
-                                if (hitObj.name === 'floor') {
+                                let validGround = false;
+                                if (hit.face && hit.face.normal) {
+                                    const normalMatrix = new THREE.Matrix3().getNormalMatrix(hitObj.matrixWorld);
+                                    const worldNormal = hit.face.normal.clone().applyMatrix3(normalMatrix).normalize();
+                                    if (worldNormal.y > 0.9) validGround = true;
+                                }
+                                if (validGround) {
                                     currentRayLength = hitDist;
-                                    teleportPoint.copy(teleportIntersects[0].point);
+                                    teleportPoint.copy(hit.point);
                                     teleportMarker.position.copy(teleportPoint);
                                     teleportMarker.position.y = 0.001;
                                     teleportMarker.visible = true;
@@ -1074,9 +1089,8 @@
                                     if (tutorialIndex < tutorialSlides.length) {
                                         disegnaTutorialHUD();
                                     } else {
-                                        // Avvia fade-out del tutorial
                                         panels[0].targetOpacity = 0;
-                                        tutorialFadeOutDone = false; // reset flag per il callback
+                                        tutorialFadeOutDone = false;
                                     }
                                 }
                             } else if (currentHoverObject) {
