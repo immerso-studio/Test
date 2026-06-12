@@ -146,6 +146,23 @@
         });
 
         // -----------------------------------------------------------------
+        // CARICAMENTO SCAFFALATURA (NUOVO)
+        // -----------------------------------------------------------------
+        const scaffLoader = new GLTFLoader();
+        scaffLoader.load('assets/scaffalatura.glb', (gltf) => {
+            const scaffModel = gltf.scene;
+            // Posizionato a sinistra dello starting point (0,0,2) → x negativo
+            scaffModel.position.set(-3, 0, 0);
+            scaffModel.scale.set(0.02, 0.02, 0.02);
+            scaffModel.name = 'scaffalatura';
+            scene.add(scaffModel);
+            // Aggiungiamo anche la scaffalatura tra i collider per il teletrasporto
+            environmentColliders.push(scaffModel);
+        }, undefined, (error) => {
+            console.warn("Modello scaffalatura non trovato:", error);
+        });
+
+        // -----------------------------------------------------------------
         // CARICAMENTO HDRI (CONTESTO ESTERNO)
         // -----------------------------------------------------------------
         const rgbeLoader = new RGBELoader();
